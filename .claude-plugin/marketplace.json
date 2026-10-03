@@ -1,0 +1,15 @@
+{
+  "name": "server-use",
+  "description": "server-use: let your AI agent operate your servers over SSH.",
+  "owner": {
+    "name": "Tyron Carlomagno"
+  },
+  "plugins": [
+    {
+      "name": "server-use",
+      "source": "./",
+      "description": "Let your agent use your servers: persistent SSH connections, fleet exec, cron, jobs and deploys.",
+      "category": "Developer Tools"
+    }
+  ]
+}

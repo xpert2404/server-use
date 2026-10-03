@@ -1,0 +1,267 @@
+// @ts-check
+// `server-use mcp`: a Model Context Protocol server on stdio (newline-delimited JSON-RPC 2.0).
+// A thin adapter over the daemon — the same pool, inventory, policy and audit log as the CLI.
+// Hand-rolled on purpose: the protocol surface we need is five methods; the SDK would pull in a web stack.
+import { existsSync, realpathSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { DaemonClient } from './client.mjs'
+import { formatResults, formatStatus, table } from './format.mjs'
+import { ROOT, VERSION, home, sshDir } from './paths.mjs'
+import { parseDuration, UsageError } from './util.mjs'
+
+const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
+
+const target = { type: 'string', description: 'server name, "a,b", "tag:<tag>" or "all"' }
+const yes = { type: 'boolean', description: 'only after the user confirmed a destructive action (policy "confirm" answered with CONFIRM)' }
+
+/** The tool table, shared with native adapters (NEXUS `server_*`) so they offer exactly what MCP offers. */
+export const TOOLS = [
+  {
+    name: 'servers',
+    description: 'Inventory of SSH servers. list | show (details + notes: read before working on a server) | status (health line per server) | add (pins host key, installs a key when a password is given, then forgets the password) | notes (append what you set up) | facts (refresh OS/tool facts).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'show', 'status', 'add', 'notes', 'facts'] },
+        name: { type: 'string', description: 'server name (show, add, notes)' },
+        targets: target,
+        address: { type: 'string', description: 'add: user@host[:port]' },
+        password: { type: 'string', description: 'add: login password if the user gave one (it is replaced by a key right away)' },
+        tags: { type: 'array', items: { type: 'string' } },
+        policy: { type: 'string', enum: ['open', 'confirm', 'readonly'] },
+        append: { type: 'string', description: 'notes: line to append' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'exec',
+    description: 'Run a shell command (or a multi-line script) on one or more servers over the pooled SSH connection. Output is cut to the first 50 + last 150 lines per server (full log path given). Use job for runs longer than a few minutes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        targets: target,
+        command: { type: 'string', description: 'one shell command line' },
+        script: { type: 'string', description: 'multi-line script (runs in bash, else sh) — use instead of command for quotes, pipes, several lines' },
+        sudo: { type: 'boolean' },
+        cwd: { type: 'string' },
+        timeout: { type: 'string', description: 'e.g. 90s, 10m (default 10m)' },
+        yes,
+      },
+      required: ['targets'],
+    },
+  },
+  {
+    name: 'transfer',
+    description: 'Copy a single file between this machine and servers. put: local → remote (remote path ending in / = directory). get: remote → local. Off-limits locally: server-use\'s state directory, ~/.ssh, the inventory\'s login keys, and (get) server-use\'s install directories.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        direction: { type: 'string', enum: ['put', 'get'] },
+        targets: target,
+        local: { type: 'string', description: 'absolute local path' },
+        remote: { type: 'string' },
+        mode: { type: 'string', description: 'put: octal mode like 640' },
+        sudo: { type: 'boolean' },
+        yes,
+      },
+      required: ['direction', 'targets', 'local', 'remote'],
+    },
+  },
+  {
+    name: 'logs',
+    description: 'Recent logs of a systemd unit, docker container or file on a server (auto-detected).',
+    inputSchema: {
+      type: 'object',
+      properties: { target, source: { type: 'string' }, lines: { type: 'number' }, since: { type: 'string', description: 'e.g. 30m, 2h' }, sudo: { type: 'boolean' } },
+      required: ['target', 'source'],
+    },
+  },
+  {
+    name: 'cron',
+    description: 'Manage cron jobs on a server (real crontab, own marked block, other lines untouched, flock against overlap). Check the time zone shown by ls before choosing a schedule; test with run.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['ls', 'add', 'rm', 'run', 'logs'] }, target, name: { type: 'string' },
+        schedule: { type: 'string', description: '5 fields like "0 6 * * 1-5" or @daily' }, command: { type: 'string' }, lock: { type: 'boolean' }, yes,
+      },
+      required: ['action', 'target'],
+    },
+  },
+  {
+    name: 'job',
+    description: 'Long-running background jobs on a server that survive disconnects (data processing, backtests, builds).',
+    inputSchema: {
+      type: 'object',
+      properties: { action: { type: 'string', enum: ['start', 'ls', 'status', 'logs', 'stop'] }, target, name: { type: 'string' }, command: { type: 'string' }, script: { type: 'string' }, lines: { type: 'number' }, yes },
+      required: ['action', 'target'],
+    },
+  },
+  {
+    name: 'deploy',
+    description: 'Deploy a git repo to a server as releases with a current symlink, build detection (compose/npm/python), optional systemd service (run), health check with automatic rollback, auto-deploy via pull check (watch). Also: ls, rollback, key (deploy key for private repos), env_ls/env_set/env_rm for <base>/shared/.env.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['deploy', 'ls', 'rollback', 'key', 'env_ls', 'env_set', 'env_rm'] }, target,
+        repo: { type: 'string', description: 'owner/repo, github.com/owner/repo or git URL' }, name: { type: 'string', description: 'app name (default: repo name)' },
+        ref: { type: 'string' }, build: { type: 'string' }, run: { type: 'string' }, health: { type: 'string' }, watch: { type: 'string', description: 'pull-check interval, e.g. 5m' },
+        key: { type: 'string', description: 'env_*: variable name' }, value: { type: 'string', description: 'env_set: value' }, sudo: { type: 'boolean' }, yes,
+      },
+      required: ['action', 'target'],
+    },
+  },
+]
+
+/**
+ * One tool call. `results` (per host, when the tool works on hosts) lets an adapter see which hosts answered CONFIRM.
+ * @param {DaemonClient} c @param {string} name @param {any} a @returns {Promise<{text: string, isError: boolean, results?: any[]}>}
+ */
+export async function callTool(c, name, a) {
+  const res = (/** @type {any[]} */ list) => { const f = formatResults(list); return { text: f.text || '(no output)', isError: f.code !== 0, results: list } }
+  switch (name) {
+    case 'servers': {
+      if (a.action === 'list') {
+        const r = await c.request('servers.list')
+        if (!r.servers.length) return { text: 'inventory is empty', isError: false }
+        return { text: table([['NAME', 'ADDRESS', 'POLICY', 'AUTH', 'CONN', 'TAGS', 'OS'], ...r.servers.map((/** @type {any} */ s) => [s.name, `${s.user}@${s.host}:${s.port}`, s.policy, s.auth, s.connection, (s.tags || []).join(','), s.os || ''])]), isError: false }
+      }
+      if (a.action === 'show') return { text: JSON.stringify(await c.request('servers.show', { name: a.name }), null, 2), isError: false }
+      if (a.action === 'status') { const f = formatStatus((await c.request('status', { targets: a.targets || 'all' })).results); return { text: f.text, isError: f.code !== 0 } }
+      if (a.action === 'add') return { text: JSON.stringify(await c.request('servers.add', { name: a.name, address: a.address, password: a.password, tags: a.tags, policy: a.policy }), null, 2), isError: false }
+      if (a.action === 'notes') return { text: (await c.request('notes', { name: a.name, append: a.append })).notes || '(no notes yet)', isError: false }
+      if (a.action === 'facts') return res((await c.request('facts', { targets: a.targets || 'all' })).results.map((/** @type {any} */ x) => x.error ? x : { host: x.host, exit: 0, stdout: { text: Object.entries(x.facts).map(([k, v]) => `${k}=${v}`).join('\n') } }))
+      break
+    }
+    case 'exec':
+      return res((await c.request('exec', { targets: a.targets, command: a.command, script: a.script, sudo: a.sudo, cwd: a.cwd, timeoutMs: a.timeout ? parseDuration(a.timeout) : undefined, yes: a.yes })).results)
+    case 'transfer': {
+      if (typeof a.local !== 'string' || !isAbsolute(a.local)) throw new UsageError('local path must be absolute')
+      // Check and send the same fully qualified path: a drive-less win32 path ("\Users\...") would otherwise be
+      // checked on this process's drive and written on the daemon's. resolve() drops the trailing "into this dir" separator.
+      const local = resolve(a.local) + (/[\\/]$/.test(a.local) ? sep : '')
+      // server-use's own state (pinned host keys, policies, key, secrets) is the user's: no reading or overwriting it via the agent.
+      if (inside(home(), local)) throw new UsageError(`local path is inside server-use's state directory ${home()}; use another path`)
+      // Keys in ~/.ssh/known_hosts are trusted too and ~/.ssh/id_* log in: no planting a host key, no uploading a login key.
+      if (inside(sshDir(), local)) throw new UsageError(`local path is inside ${sshDir()}, whose known_hosts and keys server-use trusts; use another path`)
+      // Same for login keys the inventory names elsewhere (add --key, IdentityFile from import ssh-config).
+      const keys = (await c.request('servers.list')).servers.filter((/** @type {any} */ s) => s.key).map((/** @type {any} */ s) => String(s.key).replace(/^~(?=$|[\\/])/, homedir()))
+      if (keys.some((/** @type {string} */ k) => inside(k, local))) throw new UsageError('local path is the login key of a server in the inventory; use another path')
+      // Nor replacing the code that enforces policies and pins (it runs at the next daemon start). Any copy, not only this
+      // one: the daemon, or the CLI that starts the next one, may run from another install (plugin cache vs npm global).
+      const inst = a.direction === 'get' && (inside(ROOT, local) ? ROOT : install(local))
+      if (inst) throw new UsageError(`local path is inside server-use's install directory ${inst}; download elsewhere`)
+      return res((await c.request(a.direction === 'get' ? 'get' : 'put', { targets: a.targets, local, remote: a.remote, mode: a.mode, sudo: a.sudo, yes: a.yes })).results
+        .map((/** @type {any} */ x) => x.error ? x : { ...x, stdout: { text: x.exit === 0 ? `${a.direction === 'get' ? 'downloaded' : 'uploaded'} ${x.bytes} bytes → ${x.local || x.remote}` : x.stdout?.text } }))
+    }
+    case 'logs':
+      return res((await c.request('logs', a)).results)
+    case 'cron':
+      return res((await c.request('cron', a)).results)
+    case 'job':
+      return res((await c.request('job', a)).results)
+    case 'deploy': {
+      if (String(a.action).startsWith('env_')) return res((await c.request('env', { action: a.action.slice(4), target: a.target, app: a.name, key: a.key, value: a.value, sudo: a.sudo })).results)
+      return res((await c.request('deploy', a)).results)
+    }
+  }
+  throw Object.assign(new Error(`unknown tool or action: ${name} ${a.action ?? ''}`), { rpc: -32602 })
+}
+
+/** Real path as far as it exists (symlinks, 8.3 names, case, trailing dots resolved), the missing rest appended. */
+function real(/** @type {string} */ p) {
+  /** @type {string[]} */ const rest = []
+  for (;;) {
+    try { return join(realpathSync.native(p), ...rest) } catch { /* not there yet: go up */ }
+    if (dirname(p) === p) return join(p, ...rest)
+    rest.unshift(basename(p))
+    p = dirname(p)
+  }
+}
+/** Is `p` the directory `dir` or anything below it? By real path, else by file identity: realpath keeps aliases like \\localhost\C$\... */
+function inside(/** @type {string} */ dir, /** @type {string} */ p) {
+  const rel = relative(real(dir), real(resolve(String(p))))
+  if (!isAbsolute(rel) && rel.split(sep)[0] !== '..') return true
+  const id = (/** @type {string} */ q) => { try { const s = statSync(q, { bigint: true }); return s.ino ? `${s.dev}:${s.ino}` : '' } catch { return '' } }
+  const want = id(dir)
+  for (let q = resolve(String(p)); want; q = dirname(q)) {
+    if (id(q) === want) return true
+    if (dirname(q) === q) break
+  }
+  return false
+}
+
+/** The server-use install (a directory with bin/server-use.mjs) that `p` is in, else ''. */
+function install(/** @type {string} */ p) {
+  for (let q = real(p); ; q = dirname(q)) {
+    if (existsSync(join(q, 'bin', 'server-use.mjs'))) return q
+    if (dirname(q) === q) return ''
+  }
+}
+
+export async function runMcp() {
+  /** @type {DaemonClient | null} */ let client = null
+  let agent = 'mcp'
+  const daemon = async () => {
+    if (!client || client.sock.destroyed) client = await DaemonClient.connect({ agent })
+    return client
+  }
+  const send = (/** @type {object} */ m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\n')
+
+  /** @param {any} msg */
+  async function handle(msg) {
+    const { id, method, params } = msg
+    if (id === undefined) return // notifications (initialized, cancelled) need no answer
+    try {
+      if (method === 'initialize') {
+        agent = `mcp:${String(params?.clientInfo?.name || 'client').slice(0, 30)}`
+        const v = PROTOCOLS.includes(params?.protocolVersion) ? params.protocolVersion : PROTOCOLS[0]
+        return send({ id, result: {
+          protocolVersion: v, capabilities: { tools: {} }, serverInfo: { name: 'server-use', version: VERSION },
+          instructions: 'server-use operates the user\'s SSH servers. Start with servers(list); read servers(show) notes before changing a server; append what you set up with servers(notes). CONFIRM errors mean: ask the user, then repeat with yes=true.',
+        } })
+      }
+      if (method === 'ping') return send({ id, result: {} })
+      if (method === 'tools/list') return send({ id, result: { tools: TOOLS } })
+      if (method === 'tools/call') {
+        let out
+        try {
+          out = await callTool(await daemon(), params?.name, params?.arguments || {})
+        } catch (e) {
+          const err = /** @type {any} */ (e)
+          if (err.rpc) throw err
+          out = { text: `${err.code || 'ERROR'}: ${err.message}`, isError: true }
+        }
+        return send({ id, result: { content: [{ type: 'text', text: out.text }], isError: out.isError } })
+      }
+      send({ id, error: { code: -32601, message: `method not found: ${method}` } })
+    } catch (e) {
+      const err = /** @type {any} */ (e)
+      send({ id, error: { code: err.rpc || -32603, message: err.message } })
+    }
+  }
+
+  /** @type {Set<Promise<void>>} */ const inflight = new Set()
+  let buf = ''
+  process.stdin.setEncoding('utf8')
+  process.stdin.on('data', (chunk) => {
+    buf += chunk
+    let i
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim()
+      buf = buf.slice(i + 1)
+      if (!line) continue
+      let msg
+      try { msg = JSON.parse(line) } catch { send({ id: null, error: { code: -32700, message: 'parse error' } }); continue }
+      const p = handle(msg).finally(() => inflight.delete(p))
+      inflight.add(p)
+    }
+  })
+  process.stdin.on('end', async () => {
+    await Promise.allSettled([...inflight])
+    client?.close()
+    process.exit(0)
+  })
+}

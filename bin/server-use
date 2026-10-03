@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+// Extensionless entry for PATH lookups (Claude Code plugin bin/). Dynamic import works whether Node loads this as CJS or ESM.
+import('./server-use.mjs')

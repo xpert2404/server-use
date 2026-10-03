@@ -1,0 +1,44 @@
+{
+  "name": "server-use",
+  "version": "0.1.0",
+  "description": "Let your AI agent use your servers: persistent SSH connections, fleet exec, cron, jobs and deploys for Claude Code, Codex, NEXUS Harness and any agent with a shell.",
+  "type": "module",
+  "bin": {
+    "server-use": "bin/server-use.mjs"
+  },
+  "exports": {
+    ".": "./src/client.mjs",
+    "./client": "./src/client.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "remote",
+    "skills",
+    ".claude-plugin",
+    "plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.mjs\"",
+    "bench": "node bench/latency.mjs"
+  },
+  "keywords": ["ssh", "agent", "claude-code", "codex", "mcp", "server", "devops", "browser-use", "computer-use"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xpert2404/server-use.git"
+  },
+  "author": "Tyron Carlomagno",
+  "license": "MIT",
+  "dependencies": {
+    "ssh2": "^1.17.0",
+    "yaml": "^2.9.1"
+  },
+  "optionalDependencies": {
+    "@napi-rs/keyring": "^2.1.0"
+  }
+}

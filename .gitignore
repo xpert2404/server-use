@@ -1,0 +1,7 @@
+node_modules/
+*.log
+*.stackdump
+.server-use-test*/
+# internal planning docs, kept local
+PLAN.md
+GATES.md

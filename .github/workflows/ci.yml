@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  # The remote/*.sh scripts only run for real here: a Debian sshd container with cron, sudo users and git.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: docker build -t server-use-e2e test/e2e
+      - run: docker run -d --init --name su-e2e -p 127.0.0.1:2222:22 server-use-e2e
+      # docker-proxy accepts TCP before sshd is up; wait for real host keys
+      - name: Wait for sshd
+        run: |
+          for i in $(seq 1 30); do
+            ssh-keyscan -T 2 -p 2222 127.0.0.1 2>/dev/null | grep -q ssh- && exit 0
+            sleep 1
+          done
+          docker logs su-e2e
+          exit 1
+      - name: node --test test/e2e
+        run: node --test --test-concurrency=1 "test/e2e/*.test.mjs"
+        env:
+          SU_E2E_HOST: 127.0.0.1
+          SU_E2E_PORT: '2222'
+          SU_E2E_ROOT_PASSWORD: root-pw
+          SU_E2E_ALICE_PASSWORD: alice-pw
+          SU_E2E_BOB_PASSWORD: bob-pw
+      - name: Container log
+        if: failure()
+        run: docker logs su-e2e

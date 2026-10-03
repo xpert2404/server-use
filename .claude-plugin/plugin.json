@@ -1,0 +1,13 @@
+{
+  "name": "server-use",
+  "displayName": "server-use",
+  "version": "0.1.0",
+  "description": "Let your agent use your servers: persistent SSH connections, fleet exec, cron, jobs and deploys. Skills plus the server-use CLI on the Bash PATH.",
+  "author": {
+    "name": "Tyron Carlomagno"
+  },
+  "homepage": "https://github.com/xpert2404/server-use",
+  "repository": "https://github.com/xpert2404/server-use",
+  "license": "MIT",
+  "keywords": ["ssh", "servers", "devops", "deploy", "cron", "fleet", "vps"]
+}
