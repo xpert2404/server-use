@@ -35,14 +35,19 @@ ask for what you want:
 
 ```
 codex plugin marketplace add xpert2404/server-use
+codex plugin add server-use@server-use
 npm i -g github:xpert2404/server-use
+codex mcp add server-use -- server-use mcp
 ```
 
-Install the plugin from `/plugins`, then start a new session. Codex plugins have no `bin/`, hence the global
-install. In Codex's default `workspace-write` sandbox, shell commands have no network access and cannot write
-outside the workspace, so the CLI cannot reach your servers or keep its state in `~/.server-use` from there. Use
-the MCP server (below), which runs outside the sandbox. The alternative, not yet verified, is
-`[sandbox_workspace_write]` with `network_access = true` and `~/.server-use` in `writable_roots`.
+The plugin brings the skills; Codex plugins have no `bin/`, hence the global install. In Codex's default
+`workspace-write` sandbox, shell commands have no network access and cannot write outside the workspace, so the
+CLI cannot reach your servers from there. The MCP server runs outside the sandbox, which is why the last line
+registers it (tested with Codex 0.160 in `workspace-write`). For `codex exec` without a person to approve tool
+calls, add `default_tools_approval_mode = "approve"` under `[mcp_servers.server-use]` in `~/.codex/config.toml`;
+server-use's own per-server policy still stops destructive commands on `confirm` servers. Older Codex versions on
+Windows start MCP servers without `SYSTEMROOT`, which crashes Node; there, add
+`env = { SYSTEMROOT = 'C:\Windows' }` to the same section.
 
 ### NEXUS Harness and any other agent
 
