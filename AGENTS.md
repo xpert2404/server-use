@@ -51,12 +51,13 @@ above; do not copy content from those two files into the repo.
   `permissions`, `doctor`. Look at `git log`, `CHANGELOG.md` (section *Unreleased*) and `git status` for how far it
   is; an unreleased feature is only done when it has unit tests, an e2e test that passed, a skill/README update
   and a changelog line.
-- **Interrupted state (usage limit hit, 2026-10-07):** the four 0.2 feature agents were stopped early. They had
-  barely started, so the working tree may hold small uncommitted edits (for example in `remote/job.sh`) that are
-  **not integrated or tested**: check `git status` / `git diff`, then either finish or `git checkout` them.
-  The designs for all 0.2 and 0.3 features are in [docs/ROADMAP.md](docs/ROADMAP.md) (short) and were written up in
-  detail (CLI, server side, tests) in the owner's local planning notes; re-derive details from the roadmap table
-  and the existing scripts' style.
+- **Interrupted state (usage limit hit, 2026-10-07):** the four 0.2 feature agents (`check`+`watch`, `job wait`,
+  `runbook`, `doctor`) were stopped mid-way. The working tree holds their **uncommitted, untested, unintegrated**
+  work: edits in `src/cli.mjs`, `src/daemon.mjs`, `src/guard.mjs`, `src/inventory.mjs`, `src/mcp.mjs`,
+  `src/ops/scripts.mjs`, `remote/job.sh` and new files such as `remote/check.sh`, `remote/doctor.sh`,
+  `src/ops/check.mjs`, `src/ops/jobwait.mjs`, `src/ops/runbook.mjs`, `src/checkfmt.mjs`, `src/jobcli.mjs`,
+  `test/e2e/jobwait.test.mjs`. Next step: `git diff`, run `npm test`, fix what is red, add the missing e2e tests,
+  run the e2e suite serially, review, then update README/skills/CHANGELOG. Designs: [docs/ROADMAP.md](docs/ROADMAP.md).
 - **0.3 planned**: `guard`, `site`, `backup`.
 - **Known gap to close (NEXUS):** the `servers` switch only blocks the `server_*` tools. A Coding agent can still
   run `server-use ...` in the shell. Fix in the fork's `connectorDenial`
