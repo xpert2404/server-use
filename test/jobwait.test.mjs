@@ -106,6 +106,19 @@ describe('the wait loop', () => {
     assert.ok(Date.now() - t < 500)
   })
 
+  test('a deadline in a later stalled probe does not report earlier running state as current', async () => {
+    let calls = 0, signal
+    const out = await jobWait(ctx(), { target: 'web1', timeoutMs: 50 }, 'w1', {
+      gap: () => 5,
+      run: async (c) => { signal = c.signal; return ++calls === 1 ? reply('running') : new Promise(() => {}) },
+    })
+    assert.ok(calls >= 2, 'positive running control precedes the stalled probe')
+    assert.equal(out.results[0].exit, 124)
+    assert.equal(out.results[0].error.code, 'TIMEOUT')
+    assert.equal(out.results[0].waitState, undefined)
+    assert.ok(signal.aborted)
+  })
+
   test('a job that already ended answers at once: its exit code, the text without the machine line', async () => {
     const f = fake([reply('exited', 4, 'T1', 'w1 exited 4 after 3s (started T1)\nline one\n')])
     const { results: [r] } = await jobWait(ctx(), { target: 'web1', timeoutMs: 60_000 }, 'w1', { ...f, ...fast })
@@ -308,16 +321,31 @@ describe('job wait against a fixture server (CLI, daemon and remote/job.sh)', { 
     assert.doesNotMatch(r.out, /^27$/m)
   })
 
-  test('still running at the timeout: exit 124 and "still running", then stop, then the wait is over', { timeout: 120_000 }, async () => {
+  test('a wait deadline returns 124 without stopping the job; after stop the wait is over', { timeout: 120_000 }, async () => {
     const n = jn('long')
     const pid = await start(n, 'echo begun; sleep 25')
     const t = Date.now()
     const r = await su(['job', 'wait', 'web1', n, '--timeout', '2s'])
     assert.equal(r.code, 124, r.all)
     assert.ok(Date.now() - t < 15_000)
-    assert.match(r.out, new RegExp(`^${n} still running after \\d+s \\(pid \\d+, log \\d+ B\\); call job wait again$`, 'm'))
-    assert.match(r.out, /^begun$/m)
-    assert.equal(JSON.parse((await su(['job', 'wait', 'web1', n, '--timeout', '1s', '--json'])).out).results[0].waitState, 'running')
+    // On a slow host the deadline may arrive during a probe. That explicitly reports unknown state,
+    // rather than claiming the job is still running from an earlier observation.
+    if (r.out.includes('TIMEOUT:')) assert.match(r.out, /TIMEOUT: wait deadline reached during state probe; job state is unknown, wait again/)
+    else {
+      assert.match(r.out, new RegExp(`^${n} still running after \\d+s \\(pid \\d+, log \\d+ B\\); call job wait again$`, 'm'))
+      assert.match(r.out, /^begun$/m)
+    }
+    const again = await su(['job', 'wait', 'web1', n, '--timeout', '1s', '--json'])
+    assert.equal(again.code, 124, again.all)
+    const pending = JSON.parse(again.out).results[0]
+    if (pending.error) {
+      assert.equal(pending.error.code, 'TIMEOUT')
+      assert.match(pending.error.message, /job state is unknown, wait again/)
+      assert.equal(pending.waitState, undefined)
+    } else assert.equal(pending.waitState, 'running')
+    const status = await su(['job', 'status', 'web1', n])
+    assert.equal(status.code, 0, status.all)
+    assert.match(status.out, /state +running/)
     assert.ok(pid > 0)
     const stop = await su(['job', 'stop', 'web1', n], { timeout: 60_000 })
     assert.equal(stop.code, 0, stop.all)

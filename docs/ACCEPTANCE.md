@@ -33,7 +33,7 @@ The Windows runs below use Node 24. Unit runs unset `SU_E2E_HOST`/`SU_E2E_PORT`;
 
 | Area | Claim | Evidence |
 |---|---|---|
-| Unit/integration | Existing behavior and all 0.2 interfaces pass | `node --test --test-reporter=tap --test-concurrency=1 "test/**/*.test.mjs"`: 172 tests, 169 pass, 3 platform-specific skips, 0 fail. SSH suites are separately disabled in this run. |
+| Unit/integration | Existing behavior and all 0.2 interfaces pass | `node --test --test-reporter=tap --test-concurrency=1 "test/**/*.test.mjs"`: 182 tests, 179 pass, 3 platform-specific skips, 0 fail. SSH suites are separately disabled in this run. |
 | Real SSH | Complete script/CLI/daemon acceptance passes | `SU_E2E_HOST=127.0.0.1 SU_E2E_PORT=2222 node --test --test-reporter=tap --test-concurrency=1 "test/e2e/*.test.mjs"`: 61 tests, 61 pass, 0 skipped, 0 fail. |
 | Check/watch | Findings and diffs, incomplete probes, notification lifecycle and credential handling | `test/check.test.mjs`, `test/watch.test.mjs`, `test/e2e/checkwatch.test.mjs`: disk/backup/failed-cron findings, new/resolved changes, dead-host fleet behavior; real cron installation, HTTP failure/recovery debounce, mute, heartbeat and exact signed webhook deliveries. Unit cases also reject root-owned state beneath unsafe parents/leaves. |
 | Job wait/timebox | Completion/exit/log reporting survives transport loss and daemon restart; waiters leave SSH slots free | `test/jobwait.test.mjs`, `test/e2e/jobwait.test.mjs`: exit 0/nonzero, deadlines, disappeared/restarted runners, nine concurrent waits, MCP pending replies and detached process groups. A requested timebox is refused before job creation when `timeout -k` is unavailable. |
@@ -41,11 +41,13 @@ The Windows runs below use Node 24. Unit runs unset `SU_E2E_HOST`/`SU_E2E_PORT`;
 | Doctor | Read-only snapshot with ranked evidence, recent changes, missing probes and recognized secret redaction | `test/doctor.test.mjs`, `test/e2e/doctor.test.mjs`: actual file error counts, complete local-state leak scan, quoted/escaped/unterminated secrets, pressure ranking and RPM/apt timestamp handling. File-tail evidence is labelled separately from time-filtered journal/container evidence. |
 | MCP | Explicit remote targets and native approval/error semantics stay compatible | `node --test --test-reporter=tap test/mcp-ops.test.mjs`: 5/5; credentials are rejected before watch transport, approved run fields cannot widen scope, runbook `CONFIRM` propagates, mixed completed/pending job waits stay valid replies. |
 | Key generation | Invalid generated Ed25519 pairs never reach a new key file or fixture host | `node --test --test-reporter=tap test/keygen.test.mjs test/unit.test.mjs`: 28/28; deterministic malformed-first/valid-next and exhaustion controls, pair/type mismatch rejection, stable persisted keys and POSIX modes. The prior intermittent CI failure was traced to ssh2 1.17's DER leading-zero conversion. |
+| Daemon transport | Socket failure cannot crash the client or replay a mutating request | `node --test --test-reporter=tap test/client.test.mjs`: 9/9; deterministic EPIPE at connection/hello/auth/request handoffs, multiple pending requests, closed-client refusal and authentication privacy. `node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='a fake daemon squatting\|a connection without the right token\|the daemon restarting during a wait' test/daemon.test.mjs test/jobwait.test.mjs`: 3/3. A separate deterministic deadline test proves earlier running state is not misreported as current after a later probe stalls. |
 | Packaging | New runtime files ship; plugin manifest stays valid | `npm pack --dry-run --json`: 52 files, including all new remote scripts/operations and `src/keygen.mjs`; `claude plugin validate .`: validation passed. |
 | NEXUS | Native attachments, approvals, masked credentials and direct-shell switch denial tested | Plugin 19/19, real dsh composition 6/6, settings-controller 62/62, preset/project 11/11, runtime 9/9, approval/password UI 18/18, connector-policy browser 5/5; isolated build passes, Svelte check 0 errors/24 warnings, scoped lint passes. Commands are in the sibling `nexus-harness/docs/SERVER-USE.md`; fork `c01bbf28a9` and overlay `4ed854a` are local, with both pushes awaiting explicit owner approval. |
 
 Independent runtime review found no remaining blockers after the wait deadline, doctor redaction/file-tail,
-watch root-path and timebox corrections. A separate review verified the final key-generation helper.
+watch root-path and timebox corrections. Separate reviews verified the final key-generation helper and daemon
+transport error handling, including authentication order and rejection without request replay.
 
 ## Not verified yet
 

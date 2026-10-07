@@ -52,6 +52,10 @@ above; do not copy content from those two files into the repo.
   reviewed policy/secret boundaries, README/skill updates and changelog entries. See
   [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for exact commands and counts. The interrupted draft work is resolved.
   Package and plugin versions stay 0.1.0 until an explicit release; installer pins in NEXUS still target v0.1.0.
+- **CI follow-up fixes (2026-10-07):** daemon socket errors are handled across connect, authentication and
+  requests instead of causing an unhandled EPIPE. Mutating requests are not replayed; job waits keep their
+  existing reconnect path. Deadline tests distinguish a fresh running snapshot from unknown state when a probe
+  times out, and verify that waiting never stops the detached job. See [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).
 - **0.3 planned**: `guard`, `site`, `backup`.
 - **NEXUS shell gap closed locally:** when `servers` is off, `connectorDenial` also denies direct `server-use`
   commands in `bash`/`pwsh` (case insensitive). Fork tests and regenerated `runtime/product` are verified.

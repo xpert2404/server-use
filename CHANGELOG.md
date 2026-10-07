@@ -25,6 +25,8 @@ follow [Semantic Versioning](https://semver.org/); before 1.0 minor versions may
 
 - Validate generated Ed25519 pairs before use or persistence, retrying malformed draws from ssh2's DER
   conversion. This also removes the intermittent fixture host-key failure seen in CI.
+- Handle daemon socket errors through connection, mutual authentication and pending requests. A connection
+  closed during restart rejects cleanly instead of crashing with EPIPE; mutating requests are never replayed.
 
 ## 0.1.0 (2026-10-03)
 

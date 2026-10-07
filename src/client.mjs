@@ -11,6 +11,7 @@ import { detectAgent, SuError } from './util.mjs'
 
 export const PROTOCOL = 2
 const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms))
+const connectionClosed = () => new SuError('INTERNAL', 'daemon connection closed')
 
 // Handshake proofs: HMAC with the daemon token over the peer's nonce. The label keeps a daemon proof from being
 // replayed as a client proof. The token itself never goes over the pipe.
@@ -46,10 +47,15 @@ export class DaemonClient {
         else p.reject(new SuError(msg.error?.code || 'INTERNAL', msg.error?.message || 'daemon error', msg.error))
       }
     })
-    sock.on('close', () => {
-      for (const p of this.pending.values()) p.reject(new SuError('INTERNAL', 'daemon connection closed'))
-      this.pending.clear()
-    })
+    sock.on('error', () => this.#disconnect())
+    sock.on('close', () => this.#disconnect())
+  }
+
+  #disconnect() {
+    const error = connectionClosed()
+    for (const p of this.pending.values()) p.reject(error)
+    this.pending.clear()
+    this.sock.destroy()
   }
 
   /**
@@ -66,7 +72,8 @@ export class DaemonClient {
         sock = await waitConnect(20_000)
         if (!sock) throw new SuError('INTERNAL', `daemon did not start — see ${file('daemon.log')}`)
       }
-      const hello = await handshake(sock, agent)
+      let hello
+      try { hello = await handshake(sock, agent) } catch (e) { sock.destroy(); throw e }
       if (hello.ok) return new DaemonClient(sock)
       sock.destroy()
       // An older daemon is making way for us (or is busy and will once idle): wait until it is gone, then start ours.
@@ -83,8 +90,13 @@ export class DaemonClient {
   request(/** @type {string} */ op, /** @type {object} */ args = {}) {
     const id = ++this.seq
     return new Promise((resolve, reject) => {
+      if (this.sock.destroyed || !this.sock.writable) return reject(connectionClosed())
+      // Serialize before registering: invalid/circular arguments must not leave a pending request behind.
+      const text = JSON.stringify({ t: 'req', id, op, args }) + '\n'
       this.pending.set(id, { resolve, reject })
-      this.sock.write(JSON.stringify({ t: 'req', id, op, args }) + '\n')
+      try {
+        this.sock.write(text, (error) => { if (error) this.#disconnect() })
+      } catch { this.#disconnect() }
     })
   }
 
@@ -108,8 +120,9 @@ export async function call(/** @type {string} */ op, /** @type {object} */ args 
 function tryConnect() {
   return new Promise((resolve) => {
     const s = net.connect(socketPath())
-    s.once('connect', () => { s.removeAllListeners('error'); resolve(s) })
-    s.once('error', () => resolve(null))
+    s.once('connect', () => resolve(s))
+    // Keep a listener across connect/handshake/client handoffs: a peer can close in any of those gaps.
+    s.on('error', () => { s.destroy(); resolve(null) })
   })
 }
 
@@ -143,30 +156,44 @@ function handshake(/** @type {net.Socket} */ sock, /** @type {string} */ agent) 
   return new Promise((resolve, reject) => {
     let buf = ''
     let challenged = false
+    let settled = false
     const token = readFileSync(file('daemon.token'), 'utf8').trim()
     const nonce = randomBytes(16).toString('hex')
-    const done = () => { sock.off('data', onData); clearTimeout(timer) }
+    const done = () => { sock.off('data', onData); sock.off('error', onError); sock.off('close', onClose); clearTimeout(timer) }
+    const finish = (/** @type {unknown} */ error, /** @type {any} */ result) => {
+      if (settled) return
+      settled = true
+      done()
+      if (error) reject(error)
+      else resolve(result)
+    }
+    const onError = () => { finish(connectionClosed(), undefined); sock.destroy() }
+    const onClose = () => finish(connectionClosed(), undefined)
+    const write = (/** @type {object} */ msg) => {
+      try { sock.write(JSON.stringify(msg) + '\n', (error) => { if (error) onError() }) } catch { onError() }
+    }
     const onData = (/** @type {Buffer} */ d) => {
       buf += d.toString()
       let i
       while ((i = buf.indexOf('\n')) >= 0) {
         /** @type {any} */ let msg
-        try { msg = JSON.parse(buf.slice(0, i)) } catch (e) { done(); sock.destroy(); return reject(e) }
+        try { msg = JSON.parse(buf.slice(0, i)) } catch (e) { finish(e, undefined); sock.destroy(); return }
         buf = buf.slice(i + 1)
-        if (challenged) { done(); return resolve(msg) }
+        if (challenged) { finish(undefined, msg); return }
         if (msg?.t !== 'challenge' || !proves(token, 'daemon', nonce, msg.proof)) {
-          done()
+          finish(new SuError('INTERNAL', `daemon identity check failed: whatever listens on ${socketPath()} does not know the token in ${file('daemon.token')} (another user squatting it?)`), undefined)
           sock.destroy()
-          return reject(new SuError('INTERNAL', `daemon identity check failed: whatever listens on ${socketPath()} does not know the token in ${file('daemon.token')} (another user squatting it?)`))
+          return
         }
         challenged = true
-        sock.write(JSON.stringify({ t: 'auth', mac: mac(token, 'client', String(msg.nonce)) }) + '\n')
+        write({ t: 'auth', mac: mac(token, 'client', String(msg.nonce)) })
       }
     }
-    const timer = setTimeout(() => { sock.destroy(); reject(new SuError('INTERNAL', 'daemon handshake timed out')) }, 5000)
+    const timer = setTimeout(() => { finish(new SuError('INTERNAL', 'daemon handshake timed out'), undefined); sock.destroy() }, 5000)
     sock.on('data', onData)
-    sock.once('close', () => { clearTimeout(timer); resolve({ ok: false, version: '?' }) })
-    sock.write(JSON.stringify({ t: 'hello', nonce, version: VERSION, protocol: PROTOCOL, agent }) + '\n')
+    sock.on('error', onError)
+    sock.once('close', onClose)
+    write({ t: 'hello', nonce, version: VERSION, protocol: PROTOCOL, agent })
   })
 }
 
