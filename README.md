@@ -92,6 +92,9 @@ server-use logs web1 nginx --since 1h         # systemd unit, docker container o
 server-use put web1 ./data.csv /srv/data/     # get works the other way round
 server-use job start web1 backtest --script ./backtest.sh   # survives disconnects
 server-use job logs web1 backtest
+server-use job wait web1 backtest --timeout 30m  # blocks until completion, returns the job's exit code
+server-use check all --changed                # attention diff, exit 10 for new/resolved warnings
+server-use doctor web1 --since 2h             # ranked read-only incident snapshot
 server-use cron add web1 fetch '0 6 * * 1-5' '/opt/app/current/.venv/bin/python -m jobs.fetch'
 printf '%s' "$API_KEY" | server-use env set web1 app API_KEY   # <app base>/shared/.env, mode 600
 server-use deploy web1 owner/repo --run 'node server.js' --health 'curl -fsS localhost:3000/health'
@@ -114,13 +117,76 @@ printed. `--json` gives machine-readable output.
 ```
 
 Exit codes: `0` ok, `2` usage or unknown server, `3` needs `--yes` (ask the user), `4` host key changed,
-`5` unreachable, `6` auth failed, `7` readonly, `8` sudo password missing, `124` timeout. Otherwise the remote exit
+`5` unreachable, `6` auth failed, `7` readonly, `8` sudo password missing, `10` check findings or changes,
+`124` timeout (or a job still running at a wait deadline). Otherwise the remote exit
 code of the first failing host.
 
 Deploys clone the repo into `<base>/releases/<time>-<sha>`, switch a `current` symlink, link `shared/.env`, build
 what they find (compose, npm, python/uv) unless `--build` is given, run `--run` as a systemd service (or a background
 job without root), and roll back automatically when `--health` fails. `--watch 5m` adds a cron pull check that
 deploys new commits. `deploy key` creates a deploy key for private repos.
+
+## Unattended work (0.2, unreleased)
+
+`check [targets]` collects disk/inodes, memory, failed services, containers, certificates, backup freshness,
+managed cron/jobs and other available probes in one call. `--changed` compares warning/critical findings with
+the previous successful check per host; new, worsened and resolved findings return 10. Info alone returns 0.
+Connection and script failures keep their normal error codes. Configure thresholds with
+`server-use set web1 check='disk=95 inodes=95 mem=98 cert=7 backup=/srv/backups/db.sql:24 skip=updates,ssh'`.
+Backup paths are absolute and contain no whitespace; repeated `backup=` entries are supported.
+
+`doctor <targets> [--since 2h] [--deep] [--sudo]` reports ranked findings, evidence, next commands and recent
+changes. It reads once and makes no fixes. Missing permissions/tools remain visible as unavailable probes.
+Known credential patterns in diagnostic logs are redacted; avoid putting secrets into application logs.
+Journal/container queries use the requested time window. Recently modified file logs use a bounded tail;
+their evidence is labelled separately because it may include older or undated entries.
+
+`job start ... --wait[=30m]` starts and waits in one call. `job wait ... --timeout 30m` waits on an existing job;
+124 with "still running" means call wait again, while an exited job returns its own exit code.
+`job start ... --max-time 4h` sends TERM at the limit and KILL after a 30-second grace period, recording 124 or
+137. It requires `timeout` with `-k`; otherwise it refuses to start the job.
+Waiters release SSH channels between probes and survive connection loss and daemon restart.
+Connection/probe acquisition is bounded by the wait deadline; the final state/log snapshot has at most one
+additional second. A deadline during a stalled probe reports unknown job state rather than claiming completion.
+
+```
+server-use watch on web1 --every 5m --notify ntfy --yes
+server-use watch ls web1
+server-use watch mute web1 all --for 2h --yes
+server-use watch test web1 --yes
+server-use watch off web1 --yes
+```
+
+Watch installs only its own cron entry and private scripts under the login user's home. It requires cron,
+`curl` and `flock`. Notification backends are `ntfy[:https://host/topic]`, `telegram:<chat_id>` and
+`webhook:<https://endpoint>` (signed webhooks additionally require Python 3). `--stdin` reads an optional
+ntfy token, required Telegram bot token or webhook HMAC key; pass credentials from a trusted local secret
+source, outside chat and command arguments. `--url URL[=CODE]` adds probes; `--heartbeat URL` pings a dead man's
+switch after each run. Two consecutive bad/clean runs debounce alerts/resolutions; ongoing alerts repeat after
+six hours. Mutations and test notifications require confirmation on confirm-policy servers. Reinstall with
+`watch on` after changing thresholds.
+Webhooks POST JSON `{host, message}`. With an HMAC key, `X-Server-Use-Signature` contains `sha256=<hex>` over the
+exact UTF-8 request body; receivers should verify it before acting. `watch ls` and `check` expose delivery and
+heartbeat failures without revealing credentials.
+
+```
+server-use runbook add web1 restart-app --script ./restart.sh --verify 'systemctl is-active app' --param unit=app --limit 3/1h --yes
+server-use run web1 restart-app unit=app --dry-run
+server-use run web1 restart-app unit=app
+server-use permissions --format codex
+```
+
+Before `runbook add --yes`, show the user the complete script, verify command, parameters, sudo flag, target
+destinations and rate limit. Approval pins their hash and the resolved server host/port/user, so future tagged
+servers and repointed aliases require reapproval. Parameters arrive as quoted `SU_P_<key>` environment variables
+and must be enumerated at approval. `run` can execute that approved script unattended on confirm-policy servers;
+readonly, modified hashes, invalid parameters and rate limits still refuse it. Attempts count before SSH starts,
+including failures and daemon restarts. Raising a limit requires reapproval; `--yes` on run does not bypass it.
+`runbook ls|show|rm` manages local approval metadata. `permissions` prints rules to review and merge; it installs
+nothing. The local state files remain trusted user-owned configuration, not a boundary against local file edits.
+
+The MCP adapter exposes `check`, `doctor`, `watch`, `runbook`, `run` and `permissions` alongside existing tools.
+Remote tools require an explicit target. Watch credentials use CLI stdin rather than model tool arguments.
 
 ## How the daemon works
 

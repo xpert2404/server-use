@@ -7,9 +7,24 @@ follow [Semantic Versioning](https://semver.org/); before 1.0 minor versions may
 
 ### Added
 
+- `check` with per-server thresholds, backup freshness and new/resolved attention diffs (exit 10), plus `watch`
+  cron monitoring with ntfy/Telegram/signed webhook notifications, debounce, mute, HTTP probes and heartbeat.
+- `job wait`, `job start --wait` and `--max-time`: completion waits survive daemon restart and disconnects,
+  release SSH channels between probes, return the job exit code and bound runaway process groups.
+- `runbook`, `run` and `permissions`: one-time approvals pin script/verification, enumerated parameters,
+  server destinations, sudo and rate limits; durable attempt reservations prevent concurrent/restart bypasses.
+- Read-only `doctor` incident snapshots with ranked evidence, recent changes and unavailable probes.
+- MCP tools `check`, `watch`, `doctor`, `runbook`, `run` and `permissions`; existing `TOOLS`, `callTool` and
+  `DaemonClient` exports stay compatible for native integrations.
+- Unit and real-sshd end-to-end coverage for the 0.2 feature set.
 - Documentation: [architecture](docs/ARCHITECTURE.md), [security](docs/SECURITY.md), [testing](docs/TESTING.md),
   [roadmap](docs/ROADMAP.md) and [contributing](CONTRIBUTING.md).
 - Verified setup for Codex (plugin, MCP in the `workspace-write` sandbox, approval mode, old Windows builds).
+
+### Fixed
+
+- Validate generated Ed25519 pairs before use or persistence, retrying malformed draws from ssh2's DER
+  conversion. This also removes the intermittent fixture host-key failure seen in CI.
 
 ## 0.1.0 (2026-10-03)
 

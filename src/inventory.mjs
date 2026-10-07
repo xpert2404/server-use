@@ -8,11 +8,23 @@ import { SuError, UsageError } from './util.mjs'
 export const POLICIES = ['open', 'confirm', 'readonly']
 export const AUTHS = ['key', 'agent', 'password']
 const NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
-const FIELDS = ['host', 'port', 'user', 'auth', 'key', 'tags', 'policy', 'facts', 'jump', 'added', 'note']
+const FIELDS = ['host', 'port', 'user', 'auth', 'key', 'tags', 'policy', 'facts', 'jump', 'added', 'note', 'check']
+const CHECK_KINDS = 'disk inodes mem oom unit container cron job deploy cert reboot updates ssh watch backup'.split(' ')
+
+/** The `check` field: thresholds of `server-use check`, like "disk=95 inodes=95 mem=98 cert=7 skip=updates,ssh". */
+export function checkSpec(/** @type {string} */ text) {
+  for (const w of String(text).trim().split(/\s+/).filter(Boolean)) {
+    const skip = /^skip=(.+)$/.exec(w)?.[1]
+    const backup = /^backup=\/(?:[^\s|:\x00-\x1f]+):([1-9]\d{0,3})$/.exec(w)
+    if (backup && Number(backup[1]) <= 8760) continue
+    if (skip ? skip.split(',').every((k) => CHECK_KINDS.includes(k)) : /^(?:(?:disk|inodes|mem)=(?:100|[1-9]?\d)|cert=\d{1,3})$/.test(w)) continue
+    throw new UsageError(`bad check setting "${w}" (disk=N inodes=N mem=N in %, cert=N days, skip=${CHECK_KINDS.join('|')} joined by commas)`)
+  }
+}
 
 /**
  * @typedef {{host: string, port?: number, user: string, auth?: string, key?: string, tags?: string[],
- *   policy?: string, facts?: Record<string, string>, added?: string, note?: string}} Server
+ *   policy?: string, facts?: Record<string, string>, added?: string, note?: string, check?: string}} Server
  */
 
 const path = () => file('servers.yaml')
@@ -59,6 +71,7 @@ export function upsert(/** @type {string} */ name, /** @type {Partial<Server>} *
     if (!FIELDS.includes(k)) throw new UsageError(`unknown field "${k}" (${FIELDS.join(', ')})`)
     if (k === 'policy' && v !== undefined && !POLICIES.includes(/** @type {string} */ (v))) throw new UsageError(`policy must be one of ${POLICIES.join('|')}`)
     if (k === 'auth' && v !== undefined && !AUTHS.includes(/** @type {string} */ (v))) throw new UsageError(`auth must be one of ${AUTHS.join('|')}`)
+    if (k === 'check' && v !== undefined) checkSpec(String(v))
     if (v === undefined) doc.deleteIn([name, k])
     else doc.setIn([name, k], v)
   }

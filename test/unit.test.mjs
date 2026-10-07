@@ -18,6 +18,7 @@ import { formatResults, worst } from '../src/format.mjs'
 import { parseSshConfig, add, set, rm } from '../src/ops/servers.mjs'
 import { repoUrl } from '../src/ops/scripts.mjs'
 import { SH, startFixture } from './fixture.mjs'
+import { generateEd25519 } from '../src/keygen.mjs'
 
 const tmp = mkdtempSync(join(tmpdir(), 'su-unit-'))
 process.env.SERVER_USE_SECRETS = 'file'
@@ -31,8 +32,11 @@ beforeEach(() => {
 after(() => rmSync(tmp, { recursive: true, force: true }))
 
 const home = (/** @type {string} */ ...p) => join(/** @type {string} */ (process.env.SERVER_USE_HOME), ...p)
-const pubBlob = (type = 'ed25519') =>
-  /** @type {any} */ (ssh2.utils.parseKey(ssh2.utils.generateKeyPairSync(/** @type {any} */ (type), type === 'ecdsa' ? { bits: 256 } : undefined).public)).getPublicSSH()
+const pubBlob = (type = 'ed25519') => {
+  const pair = type === 'ed25519' ? generateEd25519()
+    : ssh2.utils.generateKeyPairSync(/** @type {any} */ (type), type === 'ecdsa' ? { bits: 256 } : undefined)
+  return /** @type {any} */ (ssh2.utils.parseKey(pair.public)).getPublicSSH()
+}
 
 describe('inventory', () => {
   test('upsert keeps comments and other entries, undefined deletes a field', () => {
@@ -274,7 +278,7 @@ describe('servers', () => {
   })
 
   test('an alias inherits readonly although its handshake picked another key type than the pin, even via a forwarder', async () => {
-    const [ed, ec, other] = [ssh2.utils.generateKeyPairSync('ed25519'), ssh2.utils.generateKeyPairSync('ecdsa', { bits: 256 }), ssh2.utils.generateKeyPairSync('ecdsa', { bits: 256 })]
+    const [ed, ec, other] = [generateEd25519(), ssh2.utils.generateKeyPairSync('ecdsa', { bits: 256 }), ssh2.utils.generateKeyPairSync('ecdsa', { bits: 256 })]
     const listen = (/** @type {string[]} */ hostKeys) => {
       const srv = new ssh2.Server({ hostKeys }, (/** @type {any} */ c) => {
         c.on('error', () => {})

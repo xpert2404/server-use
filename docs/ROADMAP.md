@@ -12,9 +12,10 @@ password into a key, fleet `exec`, `status`, `logs`, `put`/`get`, `job`, `cron`,
 health-checked rollback and pull-check auto-deploy, `harden`, a Claude Code plugin, a Codex/agent-plugins manifest
 and an MCP server.
 
-## 0.2: autonomy you can trust (in progress)
+## 0.2: autonomy you can trust (implemented, unreleased)
 
-The theme is "let the agent run unattended without losing control".
+The theme is "let the agent run unattended without losing control". Implementation and fixture acceptance are
+tracked in [ACCEPTANCE.md](ACCEPTANCE.md); release tagging and downstream version pins are still separate work.
 
 | Feature | What it gives you |
 |---|---|

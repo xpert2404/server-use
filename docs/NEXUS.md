@@ -29,7 +29,8 @@ The five skills are vendored into `presets/coding/skills/` by `node scripts/sync
 
 **N2: native tools with real approvals (`packages/nexus-server-use`).**
 A plain-JS dsh plugin that registers `server_list`, `server_exec`, `server_transfer`, `server_logs`, `server_cron`,
-`server_job`, `server_deploy`, `server_add` and `server_connect`:
+`server_job`, `server_deploy`, `server_add` and `server_connect`. With a 0.2 source installed, it also exposes
+`server_check`, `server_watch`, `server_doctor`, `server_runbook`, `server_run` and `server_permissions`:
 
 - It loads `src/mcp.mjs` (`TOOLS`, `callTool`) and `src/client.mjs` (`DaemonClient`) from the global npm install
   (`SERVER_USE_DIR`, the plugin config `serverUseDir`, or `npm root -g`), so **those two exports are an API: keep
@@ -59,6 +60,9 @@ through the web instance. It uses the same vendored skills; its persona maps the
   including `server_connect`. Subagents inherit; a parent's `false` wins. The UI toggle is in
   `nexus-ui` (`ComposerTools.svelte`); the wire codec in `runtime/product/settings-controller/` is **generated**
   (`node scripts/runtime-product.mjs prepare`) and checked by `scripts/runtime-product.test.mjs`.
+  The same guard denies direct `server-use` commands in the `command` argument of `bash` and `pwsh`, ignoring
+  case. This is a tool guard: shell aliases, dynamically assembled commands, direct JS imports and other process
+  tools still depend on the shell approval policy. Native attachments scope native tools when the switch is on.
 - **Masked questions are plugin-only.** Question ids starting with `secret:` are rendered by `nexus-ui` as a
   password input (never stored or echoed). The model must not be able to create one, so the same guard denies the
   model's `ask_user_question` tool when any question id starts with `secret:`; `presets/restrict-global-tools.mjs`
@@ -90,6 +94,14 @@ automatic install that fails there. Lint is oxlint (`CI=true node node_modules/o
 
 See the *Open* part of `nexus-harness/docs/SERVER-USE.md` for the current list. At the time of writing: the
 approval dialog, the per-session switch, the masked password and the Server rubric have unit/composition tests but
-no run in the real desktop app, container or phone UI (device acceptance by the owner); `tests/cursor-css.test.mjs`
-fails on a clean `main` for a reason unrelated to server-use; nothing of this has been pushed to the NEXUS
-repositories yet.
+no run in the real desktop app, container or phone UI (device acceptance by the owner). The integration is
+committed locally in the fork and overlay, with the generated settings-controller runtime and matching submodule
+pointer. Neither NEXUS repo is pushed: the owner's explicit push approval is still required because another
+session also deploys from that repository. Both safety stashes are retained.
+
+The installer/container pins remain `v0.1.0` until an explicit 0.2 release. Vendored skills include 0.2 commands
+with availability checks and 0.1 fallbacks; the plugin registers only tools the installed MCP source exports.
+Current automated evidence (2026-10-07): plugin 19/19, real dsh composition 6/6, settings-controller 62/62,
+presets/projects 11/11, runtime packaging 9/9, approval/password UI 18/18 and connector-policy browser 5/5.
+The isolated UI build passes; Svelte check reports 0 errors and 24 warnings. Exact commands and open device
+acceptance are recorded in `nexus-harness/docs/SERVER-USE.md` and its tracked `GATES.md`.

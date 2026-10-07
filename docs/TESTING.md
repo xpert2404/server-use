@@ -40,7 +40,16 @@ already sets); they share one server.
 The e2e tests assert, among others: key login after a password `add` and no leftover secret anywhere
 (`assertNoLeak`), hardening that never locks you out, cron that leaves foreign crontab lines byte-identical,
 jobs that survive a disconnect, deploys whose failing health check restores the previous release, and a pull-check
-auto-deploy that deploys exactly once per new commit.
+auto-deploy that deploys exactly once per new commit. The 0.2 suites also exercise check diffs and fleet failures,
+watch cron installation and signed webhook deliveries, job waiting and timeboxes, pinned runbooks with attempt
+quotas, and doctor evidence/redaction on the real server. Watch webhook tests start a temporary Python HTTP
+fixture on the server and clean up its process and managed cron entry.
+
+To run only the SSH suites after the unit tests, use:
+
+```
+SU_E2E_HOST=127.0.0.1 SU_E2E_PORT=2222 node --test --test-concurrency=1 "test/e2e/*.test.mjs"
+```
 
 ## Benchmark
 

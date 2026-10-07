@@ -110,8 +110,34 @@ server-use job ls trading-1
 server-use job stop trading-1 backtest
 ```
 
-Check on a job every now and then instead of polling it in a tight loop. For recurring runs, use the
-server-cron skill.
+Use `server-use job wait trading-1 backtest --timeout 30m` instead of polling. It returns the job's exit code
+and log tail; exit 124 with "still running" means wait again. `job start ... --wait=30m` combines start and
+wait; `--max-time 4h` needs `timeout -k`, sends TERM at the limit and KILL after a 30-second grace period,
+recording 124 or 137. It refuses to start without that utility. A dropped connection or daemon restart does not
+lose job state. For recurring runs, use the server-cron skill.
+
+## Autonomous checks and approved fixes
+
+These commands require the unreleased 0.2 implementation. On an installed 0.1.0, inspect `help check`, `help
+doctor` or `help job` before use; fall back to status/logs and the existing job commands if unavailable.
+
+Start unattended fleet work with `server-use check <targets> --changed --json`. Exit 10 means warnings changed
+(including resolutions); 0 means no attention change. Inspect findings and use `server-use doctor <target>
+--since 2h` for ranked incident evidence. Both are read-only; unavailable probes are explicitly reported.
+
+For persistent monitoring, `server-use watch on <target> --every 5m --notify ntfy` requests confirmation on
+confirm-policy servers; repeat with `--yes` only after approval. `watch ls` reads, `test|mute|off` also require
+approval. Notification credentials come from trusted local input with `--stdin`, never chat or argv.
+`--url URL[=CODE]` adds probes and `--heartbeat URL` pings a dead man's switch. Watch needs cron/curl/flock.
+
+An already approved fix uses `server-use run <target> <name> key=value`; inspect it first with `runbook show`
+and `run ... --dry-run`. To approve a new fix, show the complete script, verify command, enumerated parameters,
+resolved server destinations, sudo and rate limit, then ask the user. Only after agreement use
+`runbook add <targets> <name> --script ./fix.sh --param unit=app --verify 'systemctl is-active app' --limit 3/1h --yes`.
+The script reads `$SU_P_unit`. Approval pins hash and target host/port/user. Do not alter runbooks.yaml or widen
+approval rules to get around a refusal. Modified scripts, parameters, destinations and readonly are refused;
+rate exhaustion needs time or explicit reapproval with a higher limit. `--yes` never bypasses the run limit.
+`server-use permissions --format claude|codex` prints reviewable read/run rules without installing them.
 
 ## Files: get and put, not cat
 

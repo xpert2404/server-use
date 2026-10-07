@@ -47,22 +47,17 @@ above; do not copy content from those two files into the repo.
 - **0.1.0 released** on 2026-10-03: tag `v0.1.0`, GitHub release, CI green on Ubuntu/Windows/macOS x Node 22/24 and
   the Debian-sshd e2e job. Claude Code plugin install and Codex (0.160) plugin + MCP verified, see
   [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).
-- **0.2 in progress** (see [docs/ROADMAP.md](docs/ROADMAP.md)): `check`, `watch`, `job wait`, `runbook`/`run`/
-  `permissions`, `doctor`. Look at `git log`, `CHANGELOG.md` (section *Unreleased*) and `git status` for how far it
-  is; an unreleased feature is only done when it has unit tests, an e2e test that passed, a skill/README update
-  and a changelog line.
-- **Interrupted state (usage limit hit, 2026-10-07):** the four 0.2 feature agents (`check`+`watch`, `job wait`,
-  `runbook`, `doctor`) were stopped mid-way. The working tree holds their **uncommitted, untested, unintegrated**
-  work: edits in `src/cli.mjs`, `src/daemon.mjs`, `src/guard.mjs`, `src/inventory.mjs`, `src/mcp.mjs`,
-  `src/ops/scripts.mjs`, `remote/job.sh` and new files such as `remote/check.sh`, `remote/doctor.sh`,
-  `src/ops/check.mjs`, `src/ops/jobwait.mjs`, `src/ops/runbook.mjs`, `src/checkfmt.mjs`, `src/jobcli.mjs`,
-  `test/e2e/jobwait.test.mjs`. Next step: `git diff`, run `npm test`, fix what is red, add the missing e2e tests,
-  run the e2e suite serially, review, then update README/skills/CHANGELOG. Designs: [docs/ROADMAP.md](docs/ROADMAP.md).
+- **0.2 implemented, unreleased** (2026-10-07): `check`, `watch`, `job wait`/`--max-time`, `runbook`/`run`/
+  `permissions` and `doctor` are integrated through CLI, daemon and MCP, with unit and real-sshd e2e tests,
+  reviewed policy/secret boundaries, README/skill updates and changelog entries. See
+  [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for exact commands and counts. The interrupted draft work is resolved.
+  Package and plugin versions stay 0.1.0 until an explicit release; installer pins in NEXUS still target v0.1.0.
 - **0.3 planned**: `guard`, `site`, `backup`.
-- **Known gap to close (NEXUS):** the `servers` switch only blocks the `server_*` tools. A Coding agent can still
-  run `server-use ...` in the shell. Fix in the fork's `connectorDenial`
-  (`upstream/packages/api/settings-controller/src/nexus-capabilities.ts`): when `servers` is off, also deny
-  `bash`/`pwsh` calls whose command contains `server-use`; add a test, regenerate `runtime/product`.
+- **NEXUS shell gap closed locally:** when `servers` is off, `connectorDenial` also denies direct `server-use`
+  commands in `bash`/`pwsh` (case insensitive). Fork tests and regenerated `runtime/product` are verified.
+  This is a tool guard; aliases/dynamic commands/other process tools still depend on shell approvals.
+  Fork commit `c01bbf28a9` and overlay commit `4ed854a` are local, with matching submodule pointer; both pushes
+  require the owner's explicit approval. Both GitHub Desktop safety stashes are retained.
 - **NEXUS integration** lives in the sibling repo `nexus-harness` (private org repo, `../nexus-harness` next to
   this checkout). Status and file map in [docs/NEXUS.md](docs/NEXUS.md).
 - **Not on the npm registry yet.** Install with `npm i -g github:xpert2404/server-use`. If npm resolves the

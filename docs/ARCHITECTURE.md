@@ -70,6 +70,12 @@ dash and busybox. Because the script itself arrives on stdin, scripts put their 
 children (build tools, health checks, services) with stdin from `/dev/null`, so no child process can swallow the
 rest of the script.
 
+`check` emits structured findings without changing remote state; the daemon keeps previous findings locally for
+diffs. `doctor` redacts a read-only snapshot on the server and ranks its evidence locally. `watch` installs its own
+cron wrapper, private notification configuration and debounce state under the SSH user's `~/.server-use/`.
+Job waiters use short probes and release channels between them; disconnecting a waiter leaves the detached job
+running. Approved runbooks stay local and stream their pinned script only when invoked.
+
 What server-use leaves behind is visible and removable: `~/.server-use/` of the SSH user (job output and exit
 codes, cron wrappers and logs), a marked block in the user's crontab, deploys under `/opt/<name>` or `~/apps/<name>`,
 `server-use-<name>.service` units when `--run` is used as root, and this machine's public key in
@@ -89,12 +95,14 @@ secrets.json     only when no OS keychain is available (mode 0600)
 notes/<name>.md  what runs where, written by agents and humans
 runs/            full output of clipped commands, kept 7 days
 audit.jsonl      every operation: time, agent, host, command, exit
+runbooks.yaml    approved script, hash, destinations, parameters, verification and limit (mode 0600)
+state/check.json previous fleet findings for new/ongoing/resolved diffs
 ```
 
 ## Exit codes
 
 `0` ok, `2` usage or unknown server, `3` needs `--yes` (ask the user), `4` host key changed, `5` unreachable,
-`6` auth failed, `7` readonly, `8` sudo password missing, `124` timeout, `130` aborted. Otherwise the remote exit
+`6` auth failed, `7` readonly, `8` sudo password missing, `10` check attention, `124` timeout, `130` aborted. Otherwise the remote exit
 code of the first failing host. The skills teach the model what each means.
 
 ## Integrations
@@ -102,6 +110,7 @@ code of the first failing host. The skills teach the model what each means.
 - **Claude Code**: `.claude-plugin/` (plugin + marketplace); skills become `/server-use:<skill>`, `bin/` lands on PATH.
 - **Codex / agent plugins**: `plugin.json` and `.agents/plugins/marketplace.json`; Codex has no `bin/`, so the CLI
   comes from `npm i -g`, and MCP is the way through its sandbox.
-- **MCP**: `server-use mcp`, seven tools (`servers`, `exec`, `transfer`, `logs`, `cron`, `job`, `deploy`).
+- **MCP**: `server-use mcp`, thirteen tools (`servers`, `exec`, `transfer`, `logs`, `cron`, `job`, `deploy`,
+  `check`, `doctor`, `watch`, `runbook`, `run`, `permissions`).
 - **NEXUS Harness**: the `nexus-server-use` plugin in that repository registers the MCP tool table as native
   `server_*` tools with real approval dialogs, and the AI attaches servers to a conversation itself.

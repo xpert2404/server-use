@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { Readable, Writable } from 'node:stream'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname, delimiter } from 'node:path'
 import * as secrets from '../src/secrets.mjs'
 import { rawExec, withSudo } from '../src/ops/exec.mjs'
 import { SH } from './fixture.mjs'
@@ -98,7 +98,7 @@ test('sudo password never reaches the command, whether sudo prompts for it or no
   // Stand-in sudo: drops its options and runs the command; the prompting one eats a line first, like `sudo -S`.
   for (const prompts of [true, false]) {
     const fake = `sudo() { ${prompts ? 'IFS= read -r _pw; ' : ''}while [ "$1" != sh ]; do shift; done; "$@"; }\n`
-    const r = spawnSync(/** @type {string} */ (SH), ['-c', fake + w.command], { input: w.prefix + 'echo ok\n', encoding: 'utf8' })
+    const r = spawnSync(/** @type {string} */ (SH), ['-c', fake + w.command], { input: w.prefix + 'echo ok\n', encoding: 'utf8', env: { ...process.env, PATH: [dirname(SH), process.env.PATH].join(delimiter) } })
     assert.equal(r.stdout, 'ok\n', `prompts=${prompts}: ${r.stderr}`)
     assert.ok(!r.stderr.includes(pw), `prompts=${prompts}: ${r.stderr}`)
   }

@@ -47,7 +47,7 @@ Decide what SU_SOURCE is, in this order: existing file path → `tail -n`; docke
 (convert 2h → "2 hours ago"); otherwise exit 1 and list candidates on stderr (running containers, loaded services
 whose name contains SU_SOURCE). With SU_SINCE for files: ignore it and say so on stderr.
 
-### job.sh — SU_ACTION start|ls|logs|stop|status, SU_NAME, SU_LINES (default 100), SU_PAYLOAD_B64 (start)
+### job.sh — SU_ACTION start|ls|logs|stop|status|wait, SU_NAME, SU_LINES (default 100), SU_PAYLOAD_B64 (start), SU_MAX_TIME
 Job dir `$SU_DIR/jobs/$SU_NAME/` holding `cmd.sh`, `out.log`, `pid`, `exit`, `started`, `finished`.
 - start: refuse if a job with that name is running. Write the decoded payload to `cmd.sh`. Launch detached so it
   survives the SSH channel closing: `setsid` when available, else `nohup`; stdin from /dev/null; output
@@ -57,6 +57,26 @@ Job dir `$SU_DIR/jobs/$SU_NAME/` holding `cmd.sh`, `out.log`, `pid`, `exit`, `st
 - ls: one line per job: name, state, started, exit.
 - logs: `tail -n SU_LINES out.log`.
 - stop: TERM the process group (setsid made it a leader), wait up to 10 s, then KILL; say what happened.
+- wait: one short state probe, headed by `SU_JOB state=... code=... started=...`; `SU_TAIL=1` adds the log tail.
+  The daemon waits between probes, so no SSH channel is occupied by sleeping. `SU_MAX_TIME` (seconds) on start
+  requires `timeout -k`: TERM at the limit, KILL after 30 seconds, recording 124 or 137. It refuses to start if
+  kill-after support is unavailable. Jobs best-effort set oom_score_adj to 500.
+
+### check.sh — SU_CHECK
+Read-only one-pass findings; the check operation decodes them and computes the previous/new/resolved diff.
+Thresholds and skip categories come from validated inventory configuration. Missing tools and permissions
+remain info findings. Backup freshness defaults to managed backups and accepts explicit path/hour thresholds.
+
+### doctor.sh — SU_SINCE_MIN (default 120), SU_DEEP (default 0)
+Read-only `== section` blocks and tab-separated rows for host pressure, disks, OOM, services, containers,
+log signatures, changes, managed cron/jobs, certificates and unavailable probes. Output is redacted before
+leaving the server. The operation validates the snapshot, ranks findings and renders next commands.
+
+### watch.sh — installed monitoring runner and control actions
+Installs check plus notification configuration in the login user's private managed directory and uses the
+existing cron helper to preserve foreign entries. Tokens arrive on stdin; notification clients receive
+credentials via stdin/config, never argv. A lock prevents overlapping probes. Two bad/clean probes debounce
+notifications, with six-hour reminders; mute suppresses alerts and heartbeat runs after each probe.
 
 ### cron.sh — SU_ACTION ls|add|rm|run|logs, SU_NAME, SU_SCHEDULE (add), SU_PAYLOAD_B64 (add), SU_LOCK 1|0, SU_LINES
 Entries live in the user's crontab inside a block:

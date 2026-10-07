@@ -25,6 +25,28 @@ Test environment of the evidence below: Windows 11 dev machine (Node 24), WSL Ub
 | Codex | Plugin installs; server reachable through MCP in the default sandbox | Codex 0.160: `codex plugin marketplace add` + `codex plugin add server-use@server-use`; `codex exec --sandbox workspace-write` listed the skills and ran `servers list` and `exec` through MCP against the fixture. |
 | npm install from GitHub | Works | `npm i -g --prefix <tmp> github:xpert2404/server-use#v0.1.0` and the tarball URL both give `server-use --version` = 0.1.0. |
 
+## Verified (0.2 implementation, unreleased, 2026-10-07)
+
+The version/manifests remain 0.1.0; these results cover the working implementation on `main`, not a new release.
+The Windows runs below use Node 24. Unit runs unset `SU_E2E_HOST`/`SU_E2E_PORT`; the SSH run sets them to
+`127.0.0.1` and `2222`. All SSH files run serially against the live WSL fixture.
+
+| Area | Claim | Evidence |
+|---|---|---|
+| Unit/integration | Existing behavior and all 0.2 interfaces pass | `node --test --test-reporter=tap --test-concurrency=1 "test/**/*.test.mjs"`: 172 tests, 169 pass, 3 platform-specific skips, 0 fail. SSH suites are separately disabled in this run. |
+| Real SSH | Complete script/CLI/daemon acceptance passes | `SU_E2E_HOST=127.0.0.1 SU_E2E_PORT=2222 node --test --test-reporter=tap --test-concurrency=1 "test/e2e/*.test.mjs"`: 61 tests, 61 pass, 0 skipped, 0 fail. |
+| Check/watch | Findings and diffs, incomplete probes, notification lifecycle and credential handling | `test/check.test.mjs`, `test/watch.test.mjs`, `test/e2e/checkwatch.test.mjs`: disk/backup/failed-cron findings, new/resolved changes, dead-host fleet behavior; real cron installation, HTTP failure/recovery debounce, mute, heartbeat and exact signed webhook deliveries. Unit cases also reject root-owned state beneath unsafe parents/leaves. |
+| Job wait/timebox | Completion/exit/log reporting survives transport loss and daemon restart; waiters leave SSH slots free | `test/jobwait.test.mjs`, `test/e2e/jobwait.test.mjs`: exit 0/nonzero, deadlines, disappeared/restarted runners, nine concurrent waits, MCP pending replies and detached process groups. A requested timebox is refused before job creation when `timeout -k` is unavailable. |
+| Runbooks | Approval scope, hash, enumerated parameters, readonly and durable attempt quotas remain enforced | `test/runbook.test.mjs`, `test/e2e/runbook.test.mjs`: approved destructive fixes plus verification; changed script/destination/target rejection; injection rejection, dry run, revocation, concurrent admission and daemon-restart quota retention. `--yes` cannot bypass the limit. |
+| Doctor | Read-only snapshot with ranked evidence, recent changes, missing probes and recognized secret redaction | `test/doctor.test.mjs`, `test/e2e/doctor.test.mjs`: actual file error counts, complete local-state leak scan, quoted/escaped/unterminated secrets, pressure ranking and RPM/apt timestamp handling. File-tail evidence is labelled separately from time-filtered journal/container evidence. |
+| MCP | Explicit remote targets and native approval/error semantics stay compatible | `node --test --test-reporter=tap test/mcp-ops.test.mjs`: 5/5; credentials are rejected before watch transport, approved run fields cannot widen scope, runbook `CONFIRM` propagates, mixed completed/pending job waits stay valid replies. |
+| Key generation | Invalid generated Ed25519 pairs never reach a new key file or fixture host | `node --test --test-reporter=tap test/keygen.test.mjs test/unit.test.mjs`: 28/28; deterministic malformed-first/valid-next and exhaustion controls, pair/type mismatch rejection, stable persisted keys and POSIX modes. The prior intermittent CI failure was traced to ssh2 1.17's DER leading-zero conversion. |
+| Packaging | New runtime files ship; plugin manifest stays valid | `npm pack --dry-run --json`: 52 files, including all new remote scripts/operations and `src/keygen.mjs`; `claude plugin validate .`: validation passed. |
+| NEXUS | Native attachments, approvals, masked credentials and direct-shell switch denial tested | Plugin 19/19, real dsh composition 6/6, settings-controller 62/62, preset/project 11/11, runtime 9/9, approval/password UI 18/18, connector-policy browser 5/5; isolated build passes, Svelte check 0 errors/24 warnings, scoped lint passes. Commands are in the sibling `nexus-harness/docs/SERVER-USE.md`; fork `c01bbf28a9` and overlay `4ed854a` are local, with both pushes awaiting explicit owner approval. |
+
+Independent runtime review found no remaining blockers after the wait deadline, doctor redaction/file-tail,
+watch root-path and timebox corrections. A separate review verified the final key-generation helper.
+
 ## Not verified yet
 
 | Area | What is missing |
@@ -33,5 +55,5 @@ Test environment of the evidence below: Windows 11 dev machine (Node 24), WSL Ub
 | End to end on a real VPS | `add` with a password, key login, `exec`, `status`, driven from Claude Code on the Windows machine, with latencies noted. |
 | Real Claude Code session | A headless `claude -p` run using the plugin (the dev machine's login had expired). |
 | TradingAgents use case | `deploy lab github.com/TauricResearch/TradingAgents`, a `cron add` analysis run, a result in the log. |
-| 0.2 features | `check`, `watch`, `job wait`, `runbook`, `doctor`: see [ROADMAP.md](ROADMAP.md) and the changelog. |
+| 0.2 release | Tag/release installation smoke tests and downstream installer pins are pending an explicit release. The implementation/fixture results above do not claim real-VPS acceptance. |
 | NEXUS | Everything in [NEXUS.md](NEXUS.md) marked as open (real approval dialog, connector switch per session, masked password, Server rubric on the phone, dogfooding the owner's deploy script). |

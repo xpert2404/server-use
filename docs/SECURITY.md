@@ -36,6 +36,21 @@ the [README](../README.md#security-model).
   from the model entirely, run `server-use add <name> <user@host> --ask` yourself in a terminal; in NEXUS Harness
   the plugin asks through a masked input that never reaches the model.
 
+## Approved operations and monitoring (0.2)
+
+Runbook approval binds the script hash, verification command, resolved host/user/port destinations, enumerated
+parameters, sudo flag and attempt quota. Adding or replacing a runbook requires explicit approval even on an
+`open` server. Execution refuses changed destinations or scripts and `readonly` servers; `--yes` cannot override
+a quota. Attempts are reserved durably before remote execution, including failures and interrupted attempts, so
+concurrent calls and daemon restarts do not reset the limit. These checks depend on the owner's private local
+state; an attacker running as that owner remains outside the threat model.
+
+Watch mutations require approval on `confirm` servers. Notification tokens/HMAC keys enter through CLI stdin,
+are stored in a private server-side config and are not exposed in crontab, audit or inspection output. The MCP
+tool rejects credential arguments. Before root installs monitoring, it rejects symlinked or lower-user-controlled
+state/log paths. Doctor redacts recognized credential patterns before data leaves the server and repeats that
+redaction locally; it cannot identify every possible application-specific secret, so choose log sources carefully.
+
 ## The local daemon
 
 The daemon listens on a named pipe or Unix socket. Client and daemon authenticate each other with an HMAC

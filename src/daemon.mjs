@@ -6,12 +6,17 @@ import { randomBytes } from 'node:crypto'
 import { writeFileSync, readFileSync, existsSync, unlinkSync, readdirSync, statSync, rmSync, openSync, closeSync } from 'node:fs'
 import { file, ensureHome, socketPath, VERSION } from './paths.mjs'
 import { PROTOCOL, mac, proves } from './client.mjs'
+import { UsageError } from './util.mjs'
 import { Pool } from './pool.mjs'
 import { tail } from './audit.mjs'
 import * as exec from './ops/exec.mjs'
 import * as servers from './ops/servers.mjs'
 import * as transfer from './ops/transfer.mjs'
 import * as scripts from './ops/scripts.mjs'
+import * as checkOps from './ops/check.mjs'
+import { doctor } from './ops/doctor.mjs'
+import { watch } from './ops/watch.mjs'
+import * as runbooks from './ops/runbook.mjs'
 
 const IDLE_EXIT_MS = Number(process.env.SERVER_USE_DAEMON_IDLE_MS || 12 * 3_600_000)
 const MAX_LINE = 32 * 1024 * 1024
@@ -38,6 +43,15 @@ const OPS = {
   env: scripts.env,
   deploy: scripts.deploy,
   harden: scripts.harden,
+  check: checkOps.check,
+  doctor,
+  watch,
+  runbook: (ctx, a) => {
+    if (!['add', 'ls', 'show', 'rm'].includes(a.sub)) throw new UsageError('runbook action: add | ls | show | rm')
+    return runbooks[a.sub](ctx, a)
+  },
+  run: (ctx, a) => runbooks.run(ctx, a),
+  permissions: (ctx, a) => runbooks.permissions(ctx, a),
   'audit.tail': (_ctx, a) => ({ entries: tail(Number(a?.n || 20)) }),
   disconnect: (ctx, a) => { ctx.pool.drop(a.name); return { dropped: a.name } },
 }
@@ -179,7 +193,7 @@ export async function runDaemon() {
       active++
       lastActivity = Date.now()
       try {
-        const result = await fn({ pool, agent, signal: abort.signal, runId: runId() }, msg.args || {})
+        const result = await fn({ pool, agent, signal: abort.signal, runId: runId(), isStopping: () => stopping }, msg.args || {})
         send({ t: 'res', id: msg.id, ok: true, result })
       } catch (e) {
         const err = /** @type {any} */ (e)

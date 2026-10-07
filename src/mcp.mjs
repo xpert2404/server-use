@@ -9,6 +9,7 @@ import { DaemonClient } from './client.mjs'
 import { formatResults, formatStatus, table } from './format.mjs'
 import { ROOT, VERSION, home, sshDir } from './paths.mjs'
 import { parseDuration, UsageError } from './util.mjs'
+import { formatCheck } from './checkfmt.mjs'
 
 const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 
@@ -92,10 +93,13 @@ export const TOOLS = [
   },
   {
     name: 'job',
-    description: 'Long-running background jobs on a server that survive disconnects (data processing, backtests, builds).',
+    description: 'Long-running background jobs on a server that survive disconnects (data processing, backtests, builds). Do not poll: start, then wait (blocks up to `timeout`, answers with the exit code and the log tail when the job ends; "still running" is not an error, call wait again). maxTime stops a runaway job.',
     inputSchema: {
       type: 'object',
-      properties: { action: { type: 'string', enum: ['start', 'ls', 'status', 'logs', 'stop'] }, target, name: { type: 'string' }, command: { type: 'string' }, script: { type: 'string' }, lines: { type: 'number' }, yes },
+      properties: {
+        action: { type: 'string', enum: ['start', 'ls', 'status', 'logs', 'stop', 'wait'] }, target, name: { type: 'string' }, command: { type: 'string' }, script: { type: 'string' }, lines: { type: 'number' },
+        timeout: { type: 'string', description: 'wait: how long to block, e.g. 45s or 10m (default 45s)' }, maxTime: { type: 'string', description: 'start: needs timeout -k; TERM at this limit and KILL after 30s, exit 124 or 137' }, yes,
+      },
       required: ['action', 'target'],
     },
   },
@@ -112,6 +116,30 @@ export const TOOLS = [
       },
       required: ['action', 'target'],
     },
+  },
+  {
+    name: 'check', description: 'Read-only fleet attention check with new/resolved findings. code 10 means attention, not a transport error; changed reports only changes.',
+    inputSchema: { type: 'object', properties: { target, changed: { type: 'boolean' }, sudo: { type: 'boolean' } }, required: ['target'] },
+  },
+  {
+    name: 'doctor', description: 'Read-only incident snapshot with ranked evidence, next commands, recent changes and unavailable probes.',
+    inputSchema: { type: 'object', properties: { target, since: { type: 'string', description: '1s through 7d, default 2h' }, deep: { type: 'boolean' }, sudo: { type: 'boolean' } }, required: ['target'] },
+  },
+  {
+    name: 'watch', description: 'Install/manage cron monitoring on a server. Mutations need confirmation. Credentials must use CLI --stdin outside model arguments; this tool supports token-free notification endpoints only.',
+    inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['on', 'off', 'ls', 'test', 'mute'] }, target, every: { type: 'string' }, notify: { type: 'string' }, urls: { type: 'array', items: { type: 'string' } }, heartbeat: { type: 'string' }, key: { type: 'string' }, for: { type: 'string' }, yes }, required: ['action', 'target'] },
+  },
+  {
+    name: 'runbook', description: 'Approve a hash-pinned fix script once for fixed server destinations, enumerated parameters and rate limit. Add always requires user approval. ls/show/rm are local metadata operations.',
+    inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['add', 'ls', 'show', 'rm'] }, target, name: { type: 'string' }, script: { type: 'string' }, verify: { type: 'string' }, params: { type: 'array', items: { type: 'string' } }, limit: { type: 'string' }, sudo: { type: 'boolean' }, yes }, required: ['action'] },
+  },
+  {
+    name: 'run', description: 'Execute a previously approved runbook only on pinned destinations with approved parameters. Hash, readonly and rate limits cannot be bypassed; dryRun previews the plan.',
+    inputSchema: { type: 'object', properties: { target, runbook: { type: 'string' }, params: { type: 'object', additionalProperties: { type: 'string' } }, dryRun: { type: 'boolean' } }, required: ['target', 'runbook'] },
+  },
+  {
+    name: 'permissions', description: 'Print reviewable Claude CLI permissions or Codex prefix rules for reading operations and named approved runbooks. Does not install or grant permissions.',
+    inputSchema: { type: 'object', properties: { format: { type: 'string', enum: ['claude', 'codex'] } } },
   },
 ]
 
@@ -160,8 +188,34 @@ export async function callTool(c, name, a) {
       return res((await c.request('logs', a)).results)
     case 'cron':
       return res((await c.request('cron', a)).results)
-    case 'job':
-      return res((await c.request('job', a)).results)
+    case 'job': {
+      const out = res((await c.request('job', { ...a, timeoutMs: a.action === 'wait' ? parseDuration(a.timeout || '45s') : undefined, maxTimeMs: a.maxTime ? parseDuration(a.maxTime) : undefined })).results)
+      // exit 124 of a wait while the job still runs is an answer, not a failure
+      if (a.action === 'wait' && out.results?.length && out.results.every((/** @type {any} */ r) => !r.error && (r.waitState === 'running' || r.waitState === 'exited' && r.exit === 0))) out.isError = false
+      return out
+    }
+    case 'check': {
+      if (!a.target) throw new UsageError('check requires target')
+      const r = await c.request('check', { targets: a.target, changed: a.changed, sudo: a.sudo })
+      return { text: formatCheck(r), isError: r.code !== 0 && r.code !== 10, results: r.results }
+    }
+    case 'doctor':
+      if (!a.target) throw new UsageError('doctor requires target')
+      return res((await c.request('doctor', { targets: a.target, since: a.since, deep: a.deep, sudo: a.sudo })).results)
+    case 'watch':
+      if (!a.target) throw new UsageError('watch requires target')
+      if (['secret', 'token', 'password'].some(k => Object.hasOwn(a, k))) throw new UsageError('watch credentials must use CLI --stdin, never model arguments')
+      return res((await c.request('watch', { sub: a.action, targets: a.target, every: a.every, notify: a.notify, urls: a.urls, heartbeat: a.heartbeat, key: a.key, for: a.for, yes: a.yes })).results)
+    case 'runbook': {
+      const r = await c.request('runbook', { sub: a.action, targets: a.target, name: a.name, script: a.script, verify: a.verify, params: a.params, limit: a.limit, sudo: a.sudo, yes: a.yes })
+      return { text: JSON.stringify(r, null, 2), isError: false }
+    }
+    case 'run':
+      return res((await c.request('run', { target: a.target, runbook: a.runbook, params: a.params, dryRun: a.dryRun })).results)
+    case 'permissions': {
+      const r = await c.request('permissions', { format: a.format })
+      return { text: r.text + '\n' + r.note, isError: false }
+    }
     case 'deploy': {
       if (String(a.action).startsWith('env_')) return res((await c.request('env', { action: a.action.slice(4), target: a.target, app: a.name, key: a.key, value: a.value, sudo: a.sudo })).results)
       return res((await c.request('deploy', a)).results)

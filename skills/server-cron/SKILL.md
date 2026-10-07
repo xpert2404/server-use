@@ -9,6 +9,11 @@ description: >-
 
 # server-cron
 
+When the installed version offers watch (0.2), prefer `server-use watch on <target> --every 5m --notify ntfy` after approval
+(`--yes` only after the user agrees), rather than writing a polling cron script. It preserves foreign cron
+entries, debounces findings, supports mute/HTTP probes/heartbeat, and notifies without an open chat.
+Keep notification tokens out of chat and argv; `watch --stdin` reads them from trusted local input.
+
 server-use writes real crontab entries, so the system cron runs them and no agent or daemon has to stay
 alive. It manages its own marked block in the crontab and never touches other lines. Each job runs through
 a wrapper that writes a log and holds a `flock`, so a slow run can't overlap with the next one. If

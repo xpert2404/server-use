@@ -35,7 +35,7 @@ export function destructive(/** @type {string | undefined} */ text) {
 }
 
 /** Operations that only read. Everything else writes. */
-export const READ_OPS = new Set(['status', 'logs', 'get', 'facts', 'cron.ls', 'cron.logs', 'job.ls', 'job.logs', 'job.status', 'env.ls', 'deploy.ls'])
+export const READ_OPS = new Set(['status', 'logs', 'get', 'facts', 'cron.ls', 'cron.logs', 'job.ls', 'job.logs', 'job.status', 'job.wait', 'env.ls', 'deploy.ls', 'check', 'doctor', 'watch.ls'])
 
 /**
  * Throws CONFIRM / READONLY when the server's policy forbids the operation.

@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import ssh2 from 'ssh2'
+import { generateEd25519 } from '../src/keygen.mjs'
 
 const { Server, utils } = ssh2
 const WIN = process.platform === 'win32'
@@ -22,7 +23,7 @@ function findSh() {
     .find(existsSync)
 }
 
-export const newHostKey = () => utils.generateKeyPairSync('ed25519').private
+export const newHostKey = () => generateEd25519().private
 
 /**
  * Start a fixture server on 127.0.0.1. `password = null` refuses password logins.

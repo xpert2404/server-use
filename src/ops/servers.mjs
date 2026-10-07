@@ -3,7 +3,7 @@
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
-import ssh2 from 'ssh2'
+import { generateEd25519 } from '../keygen.mjs'
 import * as inventory from '../inventory.mjs'
 import * as hostkeys from '../hostkeys.mjs'
 import { setSecret, deleteSecret, getSecret, backend } from '../secrets.mjs'
@@ -21,7 +21,7 @@ export function ensureKey() {
   ensureHome()
   const priv = file('id_ed25519')
   if (!existsSync(priv)) {
-    const kp = ssh2.utils.generateKeyPairSync('ed25519', { comment: `server-use@${hostname()}` })
+    const kp = generateEd25519({ comment: `server-use@${hostname()}` })
     writeFileSync(priv, kp.private, { mode: 0o600 })
     writeFileSync(priv + '.pub', kp.public + '\n', { mode: 0o644 })
   }
@@ -262,4 +262,3 @@ export function importSshConfig(/** @type {Ctx} */ ctx, /** @type {any} */ a) {
   if (!a.dryRun) audit({ agent: ctx.agent, op: 'import', path, count: out.filter((o) => o.action === 'imported').length })
   return { path, servers: out, hint: 'Test with: server-use status all — host keys are pinned on first contact (or taken from ~/.ssh/known_hosts).' }
 }
-

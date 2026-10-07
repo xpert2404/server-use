@@ -11,13 +11,15 @@ description: >-
 # server-doctor
 
 **Diagnose first, and change nothing until you know the cause.** Everything below only reads. You finish
-with a report and a proposed fix, and you apply the fix only after the user agrees. That goes for restarts,
+with a report and a proposed fix, and you apply the fix only after the user agrees or through a previously
+approved, unchanged runbook whose scope and parameters cover this fix. That goes for restarts,
 deleting files, pruning and reboots alike. If `server-use` is missing, see the server-use skill.
 
 ## 0. Context
 
 ```
 server-use notes <target>      # what runs there; dated deploys, cron jobs and jobs
+server-use doctor <target> --since 2h  # ranked snapshot, evidence, recent changes and unavailable probes
 server-use status <target>     # uptime, load, memory, disk, failed units, containers, reboot required
 server-use audit -n 30         # what agents recently ran through server-use
 ```
@@ -29,6 +31,12 @@ server-use audit -n 30         # what agents recently ran through server-use
   with `tag:…` or `a,b`.
 
 ## 1. Checklist (one round trip)
+
+Use `doctor` first when offered by the installed version (0.2); on 0.1.0 use the manual checklist below.
+Add `--sudo` when needed to read privileged logs and `--deep` to measure directories on nearly
+full disks. It makes no changes and redacts known credential patterns; missing probes are not proof of health.
+For an unattended fleet, `server-use check <targets> --changed` is cheaper and returns 10 when attention changes.
+Use the manual checklist below only for details the snapshot did not answer.
 
 If the login user isn't root, add `--sudo`, otherwise journal, dmesg and docker may show nothing:
 

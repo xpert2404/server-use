@@ -7,6 +7,7 @@ import { deleteSecret, getSecret, setSecret } from '../secrets.mjs'
 import { connect } from '../pool.mjs'
 import { runScript, runScriptOk, scriptSource, kv, b64 } from '../remote.mjs'
 import { fanOut } from './exec.mjs'
+import { jobWait, maxTimeSeconds } from './jobwait.mjs'
 import { ensureKey, appendNote } from './servers.mjs'
 import { SuError, UsageError, parseDuration, shq } from '../util.mjs'
 
@@ -68,14 +69,16 @@ export function logs(/** @type {Ctx} */ ctx, /** @type {any} */ a) {
 
 // ---- jobs: long runs that survive disconnects ----
 
-/** op "job": {action: start|ls|logs|stop|status, target, name?, command?, script?, lines?, yes?} */
+/** op "job": {action: start|ls|logs|stop|status|wait, target, name?, command?, script?, lines?, maxTimeMs? (start), timeoutMs? (wait), yes?} */
 export async function job(/** @type {Ctx} */ ctx, /** @type {any} */ a) {
   const action = a.action
-  if (!['start', 'ls', 'logs', 'stop', 'status'].includes(action)) throw new UsageError('job action: start | ls | logs | stop | status')
+  if (!['start', 'ls', 'logs', 'stop', 'status', 'wait'].includes(action)) throw new UsageError('job action: start | ls | logs | stop | status | wait')
   const name = action === 'ls' ? '' : needName('job', a.name)
+  if (action === 'wait') return jobWait(ctx, a, name)
   const payload = action === 'start' ? (a.script ?? a.command) : undefined
   if (action === 'start' && !payload) throw new UsageError('job start needs a command or --script')
-  const out = await single(ctx, a.target, `job.${action}`, 'job', { SU_ACTION: action, SU_NAME: name, SU_LINES: Number(a.lines || 100), SU_PAYLOAD_B64: payload ? b64(payload) : undefined }, { text: payload, yes: a.yes, sudo: a.sudo })
+  const maxTime = action === 'start' && a.maxTimeMs !== undefined ? maxTimeSeconds(a.maxTimeMs) : undefined
+  const out = await single(ctx, a.target, `job.${action}`, 'job', { SU_ACTION: action, SU_NAME: name, SU_LINES: Number(a.lines || 100), SU_PAYLOAD_B64: payload ? b64(payload) : undefined, SU_MAX_TIME: maxTime }, { text: payload, yes: a.yes, sudo: a.sudo })
   if (action === 'start') for (const r of out.results) if (r.exit === 0) appendNote(r.host, `job ${name} started: ${oneLine(payload)}`)
   return out
 }
