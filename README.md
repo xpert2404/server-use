@@ -198,6 +198,23 @@ What server-use leaves behind is visible and removable:
   root.
 - This machine's public key in `~/.ssh/authorized_keys` after `add` with a password.
 
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): daemon, pool, local protocol, server-side scripts, state
+- [docs/SECURITY.md](docs/SECURITY.md): which protections are real boundaries, secrets, reporting a vulnerability
+- [docs/TESTING.md](docs/TESTING.md): unit, end-to-end and benchmark; [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md): what is verified
+- [docs/ROADMAP.md](docs/ROADMAP.md), [CHANGELOG.md](CHANGELOG.md), [docs/DECISIONS.md](docs/DECISIONS.md)
+- [docs/NEXUS.md](docs/NEXUS.md): the NEXUS Harness integration
+- [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) (hand-over for AI agents and new contributors)
+
+## Troubleshooting
+
+- `npm i -g github:xpert2404/server-use` fails with `Permission denied (publickey)`: npm resolved the shorthand over
+  SSH. Install the tarball instead:
+  `npm i -g https://github.com/xpert2404/server-use/archive/refs/tags/v0.1.0.tar.gz`.
+- "could not get a matching daemon ... pid N": a daemon of an older version or protocol is still running. Stop it
+  with `kill N` (Windows: `taskkill /PID N /F`) and retry.
+
 ## Development
 
 ```
@@ -205,6 +222,8 @@ npm install
 npm test
 npm run bench
 ```
+
+Contributions are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
