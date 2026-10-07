@@ -51,7 +51,17 @@ above; do not copy content from those two files into the repo.
   `permissions`, `doctor`. Look at `git log`, `CHANGELOG.md` (section *Unreleased*) and `git status` for how far it
   is; an unreleased feature is only done when it has unit tests, an e2e test that passed, a skill/README update
   and a changelog line.
+- **Interrupted state (usage limit hit, 2026-10-07):** the four 0.2 feature agents were stopped early. They had
+  barely started, so the working tree may hold small uncommitted edits (for example in `remote/job.sh`) that are
+  **not integrated or tested**: check `git status` / `git diff`, then either finish or `git checkout` them.
+  The designs for all 0.2 and 0.3 features are in [docs/ROADMAP.md](docs/ROADMAP.md) (short) and were written up in
+  detail (CLI, server side, tests) in the owner's local planning notes; re-derive details from the roadmap table
+  and the existing scripts' style.
 - **0.3 planned**: `guard`, `site`, `backup`.
+- **Known gap to close (NEXUS):** the `servers` switch only blocks the `server_*` tools. A Coding agent can still
+  run `server-use ...` in the shell. Fix in the fork's `connectorDenial`
+  (`upstream/packages/api/settings-controller/src/nexus-capabilities.ts`): when `servers` is off, also deny
+  `bash`/`pwsh` calls whose command contains `server-use`; add a test, regenerate `runtime/product`.
 - **NEXUS integration** lives in the sibling repo `nexus-harness` (private org repo, `../nexus-harness` next to
   this checkout). Status and file map in [docs/NEXUS.md](docs/NEXUS.md).
 - **Not on the npm registry yet.** Install with `npm i -g github:xpert2404/server-use`. If npm resolves the
