@@ -4,7 +4,7 @@ import { describe, test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { scriptSource } from '../src/remote.mjs'
 import { startFixture, SH } from './fixture.mjs'
@@ -38,6 +38,38 @@ test('remote job refuses a TERM-only timeout that cannot enforce the timebox', {
   assert.match(result.stderr, /requires a working timeout command with -k; job was not started/)
   assert.ok(!existsSync(join(tmp, '.server-use/jobs/term-only')))
 })
+
+for (const probe of ['kill', 'cmdline']) {
+  test(`remote job observes exit recorded during the ${probe} liveness probe`, { skip: !SH && 'no POSIX shell' }, () => {
+    // Complete between state()'s first exit check and its liveness result. The cmdline case also
+    // makes /proc disappear after the readability check, without depending on scheduler timing.
+    const script = `SU_ACTION=wait
+SU_NAME=complete-during-${probe}
+jobdir="$HOME/.server-use/jobs/$SU_NAME"
+mkdir -p "$jobdir"
+printf '2147483647\\n' >"$jobdir/pid"
+printf 'T1\\n' >"$jobdir/started"
+kill() {
+  if test '${probe}' = kill; then printf '124\\n' >"$jobdir/exit"; return 1; fi
+  return 0
+}
+probe_test() {
+  if test "$#" -eq 3 && test "$1" = -r && test "$2" = /proc/2147483647/cmdline; then
+    printf '124\\n' >"$jobdir/exit"
+    return 0
+  fi
+  command [ "$@"
+}
+alias '['=probe_test
+` + scriptSource('job')
+    const result = spawnSync(SH, [], { input: script, encoding: 'utf8', env: { ...process.env, HOME: tmp, PATH: [dirname(SH), process.env.PATH].join(delimiter) } })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /^SU_JOB state=exited code=124 started=T1$/m)
+    assert.match(result.stdout, /exited 124 after/)
+    assert.doesNotMatch(result.stdout, /unknown|running/)
+    assert.equal(result.stderr, '')
+  })
+}
 
 describe('flags', () => {
   test('--wait, --wait=10m, --max-time 4h and --timeout become milliseconds', () => {

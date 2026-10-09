@@ -24,17 +24,31 @@ the [README](../README.md#security-model).
 
 ## Secrets
 
+The intended workflow does not give login credentials to an AI provider: the user onboards through existing
+SSH keys or the masked `server-use add --ask` prompt in their own terminal. Authentication happens between the
+local daemon and the server; server-use has no hosted backend or telemetry. A cloud-backed agent can still send
+prompts, tool arguments and command results to its provider. Do not put secrets in those channels.
+
 - Passwords, sudo passwords and key passphrases go into the OS keychain (Windows Credential Manager, macOS
   Keychain, Secret Service). Without one (headless Linux, containers, `SERVER_USE_SECRETS=file`) they go into
   `~/.server-use/secrets.json` with mode 0600, the same trust level as `~/.ssh/id_*`.
-- They never appear in argv (local or remote), `ls`/`show` output, the audit log or error messages. Sudo gets its
-  password on stdin.
+- Credentials supplied through dedicated local input channels are not included by server-use in argv (local or
+  remote), `ls`/`show` output, the audit log or error messages. Sudo gets its password on stdin. This guarantee does
+  not sanitize arbitrary commands or stdout/stderr: a secret embedded in a generated command or printed by a
+  server can reach the transcript, audit or saved output.
 - A password typed into an agent chat reaches the model provider and stays in the transcript. `add` therefore
   installs this machine's key at once, proves key login on a fresh connection and deletes the password (it keeps
   it only if key login could not be set up, or as the sudo password of a non-root user). Change the password
-  afterwards, or lock password login with `server-use harden <server> --lock-password`. To keep the password away
-  from the model entirely, run `server-use add <name> <user@host> --ask` yourself in a terminal; in NEXUS Harness
-  the plugin asks through a masked input that never reaches the model.
+  afterwards, or approve locking password login with `server-use harden <server> --lock-password`. Use local
+  onboarding as the default for every agent; `--password-stdin` is not private if the password is embedded in the
+  agent's generated shell command. Native clients can optionally provide a separate masked local credential UI.
+- Public stdio MCP does not advertise a login-password field or `deploy.env_set`/`value`. It rejects explicit
+  credential payloads for inventory/watch and `.env` value writes before connecting to the daemon. Existing local
+  SSH keys and ssh-agent still work for MCP onboarding. Set sudo passwords, passphrases, notification tokens and
+  application secrets through CLI stdin from a trusted local source.
+- Exported `callTool` and daemon APIs are privileged local integration APIs. They retain credential support for
+  adapters that collect secrets outside the model. Such adapters must enforce their own model-input boundary;
+  the stdio checks do not automatically protect native integrations or arbitrary shell tools.
 
 ## Approved operations and monitoring (0.2)
 

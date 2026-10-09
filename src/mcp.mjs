@@ -20,7 +20,7 @@ const yes = { type: 'boolean', description: 'only after the user confirmed a des
 export const TOOLS = [
   {
     name: 'servers',
-    description: 'Inventory of SSH servers. list | show (details + notes: read before working on a server) | status (health line per server) | add (pins host key, installs a key when a password is given, then forgets the password) | notes (append what you set up) | facts (refresh OS/tool facts).',
+    description: 'Inventory of SSH servers. list | show (details + notes: read before working on a server) | status (health line per server) | add (uses existing local SSH keys or ssh-agent and pins the host key) | notes (append what you set up) | facts (refresh OS/tool facts). For password onboarding, the user runs server-use add --ask in their own terminal; never ask for credentials in chat.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -28,7 +28,6 @@ export const TOOLS = [
         name: { type: 'string', description: 'server name (show, add, notes)' },
         targets: target,
         address: { type: 'string', description: 'add: user@host[:port]' },
-        password: { type: 'string', description: 'add: login password if the user gave one (it is replaced by a key right away)' },
         tags: { type: 'array', items: { type: 'string' } },
         policy: { type: 'string', enum: ['open', 'confirm', 'readonly'] },
         append: { type: 'string', description: 'notes: line to append' },
@@ -105,14 +104,14 @@ export const TOOLS = [
   },
   {
     name: 'deploy',
-    description: 'Deploy a git repo to a server as releases with a current symlink, build detection (compose/npm/python), optional systemd service (run), health check with automatic rollback, auto-deploy via pull check (watch). Also: ls, rollback, key (deploy key for private repos), env_ls/env_set/env_rm for <base>/shared/.env.',
+    description: 'Deploy a git repo to a server as releases with a current symlink, build detection (compose/npm/python), optional systemd service (run), health check with automatic rollback, auto-deploy via pull check (watch). Also: ls, rollback, key (deploy key for private repos), env_ls/env_rm for <base>/shared/.env. Set secret values locally through server-use env set on stdin, never through model arguments.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['deploy', 'ls', 'rollback', 'key', 'env_ls', 'env_set', 'env_rm'] }, target,
+        action: { type: 'string', enum: ['deploy', 'ls', 'rollback', 'key', 'env_ls', 'env_rm'] }, target,
         repo: { type: 'string', description: 'owner/repo, github.com/owner/repo or git URL' }, name: { type: 'string', description: 'app name (default: repo name)' },
         ref: { type: 'string' }, build: { type: 'string' }, run: { type: 'string' }, health: { type: 'string' }, watch: { type: 'string', description: 'pull-check interval, e.g. 5m' },
-        key: { type: 'string', description: 'env_*: variable name' }, value: { type: 'string', description: 'env_set: value' }, sudo: { type: 'boolean' }, yes,
+        key: { type: 'string', description: 'env_*: variable name' }, sudo: { type: 'boolean' }, yes,
       },
       required: ['action', 'target'],
     },
@@ -145,6 +144,8 @@ export const TOOLS = [
 
 /**
  * One tool call. `results` (per host, when the tool works on hosts) lets an adapter see which hosts answered CONFIRM.
+ * Privileged local adapter API: callers may supply credentials obtained outside the model. The public stdio
+ * endpoint rejects credential arguments before connecting; do not expose this function as an unfiltered model endpoint.
  * @param {DaemonClient} c @param {string} name @param {any} a @returns {Promise<{text: string, isError: boolean, results?: any[]}>}
  */
 export async function callTool(c, name, a) {
@@ -274,7 +275,7 @@ export async function runMcp() {
         const v = PROTOCOLS.includes(params?.protocolVersion) ? params.protocolVersion : PROTOCOLS[0]
         return send({ id, result: {
           protocolVersion: v, capabilities: { tools: {} }, serverInfo: { name: 'server-use', version: VERSION },
-          instructions: 'server-use operates the user\'s SSH servers. Start with servers(list); read servers(show) notes before changing a server; append what you set up with servers(notes). CONFIRM errors mean: ask the user, then repeat with yes=true.',
+          instructions: 'server-use operates the user\'s SSH servers using local credentials. Never request passwords, private keys or secret values in chat or tool arguments. Use existing SSH keys or ask the user to onboard locally with server-use add --ask. Start with servers(list); read servers(show) notes before changing a server; append what you set up with servers(notes). CONFIRM errors mean: ask the user, then repeat with yes=true.',
         } })
       }
       if (method === 'ping') return send({ id, result: {} })
@@ -282,7 +283,15 @@ export async function runMcp() {
       if (method === 'tools/call') {
         let out
         try {
-          out = await callTool(await daemon(), params?.name, params?.arguments || {})
+          const name = params?.name
+          const args = params?.arguments || {}
+          if (['servers', 'watch'].includes(name) && ['password', 'sudoPassword', 'sudo-password', 'passphrase', 'privateKey', 'secret', 'token'].some(k => Object.hasOwn(args, k))) {
+            throw new UsageError('credentials must come from a local terminal or trusted local secret source, never MCP arguments; use server-use add --ask for password onboarding')
+          }
+          if (name === 'deploy' && (args.action === 'env_set' || Object.hasOwn(args, 'value'))) {
+            throw new UsageError('.env values must use server-use env set with local stdin, never MCP arguments')
+          }
+          out = await callTool(await daemon(), name, args)
         } catch (e) {
           const err = /** @type {any} */ (e)
           if (err.rpc) throw err

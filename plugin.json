@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "server-use",
   "version": "0.1.0",
-  "description": "Let your agent use your servers: persistent SSH connections, fleet exec, cron, jobs and deploys. Skills in skills/; the CLI comes from npm i -g github:xpert2404/server-use.",
+  "description": "Orchestrate your servers with AI while keeping SSH credentials local. Skills for Claude Code, Codex and other agents; install the CLI with npm i -g github:xpert2404/server-use.",
   "author": {
     "name": "Tyron Carlomagno"
   },

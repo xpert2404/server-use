@@ -23,6 +23,15 @@ follow [Semantic Versioning](https://semver.org/); before 1.0 minor versions may
 
 ### Fixed
 
+- Public stdio MCP no longer advertises or accepts login passwords or `.env` values; credential payloads are
+  refused before daemon access. Local CLI stdin and privileged native adapter APIs remain available.
+- General onboarding skills default to existing SSH keys or masked input in the user's own terminal and no
+  longer tell agents to reuse chat secrets. CLI help follows that workflow; the onboarding hint no longer
+  incorrectly claims a locally entered password went through chat.
+- Recheck a job's recorded exit after its runner disappears during the liveness probe, preserving the exit code
+  instead of reporting unknown state. A disappearing `/proc` entry no longer emits a spurious diagnostic.
+- README and plugin descriptions present server-use as a standalone MIT project for Claude Code, Codex and
+  other shell/MCP agents, with explicit local-credential data flow and client-verification limits.
 - Validate generated Ed25519 pairs before use or persistence, retrying malformed draws from ssh2's DER
   conversion. This also removes the intermittent fixture host-key failure seen in CI.
 - Handle daemon socket errors through connection, mutual authentication and pending requests. A connection

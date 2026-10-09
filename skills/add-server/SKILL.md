@@ -2,7 +2,7 @@
 name: add-server
 description: >-
   Add a server to server-use: pin the host key, switch password login to key login, collect facts, set tags and
-  policy, import ~/.ssh/config. Use when the user gives an IP or host, a user and maybe a password, or says add
+  policy, import ~/.ssh/config. Use when the user gives an IP or host and a user, or says add
   server, new VPS, connect to my server, import my ssh config. German: füge Server hinzu, neuer Server, Server
   anlegen, verbinde dich mit meinem Server, hier sind die Zugangsdaten. Also use it to retag or remove servers
   and to store a sudo password.
@@ -24,38 +24,21 @@ First run `server-use --version`. If the command is missing, ask the user, then 
   Use `--policy open` only when the user asks for it, typically for a throwaway lab box. Use `--policy
   readonly` for "look, but never change anything".
 
-## 2a. The user gave you a password in the chat
+## 2a. Existing SSH keys
 
 ```
-printf '%s' 'THE-PASSWORD' | server-use add trading-1 root@203.0.113.10 --password-stdin --tag trading
+server-use add web-1 deploy@198.51.100.7 --tag web
+server-use add web-1 deploy@198.51.100.7 --key ~/.ssh/id_ed25519_work
 ```
 
-- Use `printf '%s'`, not `echo`, and wrap the password in single quotes (write a `'` inside it as `'\''`).
-  Never pass the password as an argument or put it in `--note`.
-- For another port, write `root@203.0.113.10:2222`.
+Without `--key`, server-use tries the ssh-agent and `~/.ssh/id_ed25519`, `id_ecdsa` and `id_rsa`. Load
+encrypted keys into the ssh-agent locally first. Pass only the key path, never read or request its contents.
+For another port, write `deploy@198.51.100.7:2222`.
 
-What happens:
-1. The host key gets pinned on first contact. The output shows `host key SHA256:… (new — pinned now)`.
-2. server-use logs in with the password and collects facts (OS, docker, time zone, sudo, …).
-3. It installs this machine's key (`~/.server-use/id_ed25519`) and proves that a fresh key-only login works.
-4. It deletes the password. Two exceptions: a non-root user whose sudo needs a password keeps it as the sudo
-   password, and `--keep-password` keeps it on purpose. If key login fails, the password stays too, and a
-   `hint:` line says so.
-5. The connection stays open in the daemon, and a notes file gets created.
+## 2b. Password onboarding stays local
 
-Then tell the user, in their language and briefly:
-- The server is added, it now logs in with a key, and here is the host key fingerprint. They can compare the
-  fingerprint with their provider's console.
-- **The password went through this chat**, so it now sits in the transcript and at the model provider.
-  Recommend one of two things. Either they change it themselves (`passwd` on the server, so you never see
-  the new password), or they turn off password login completely. The second needs the user's yes first:
-  `server-use harden trading-1 --lock-password --yes`. That command first proves a fresh key-only login and
-  undoes the change if anything fails.
-
-## 2b. Better: keep the password away from the model
-
-If the user is about to paste a password, suggest this instead. They run the command in **their own
-terminal**, not through you:
+Never ask for a password in chat or tool arguments. Have the user run this in **their own terminal**,
+outside your shell tool:
 
 ```
 server-use add trading-1 root@203.0.113.10 --ask --tag trading
@@ -64,17 +47,18 @@ server-use add trading-1 root@203.0.113.10 --ask --tag trading
 `--ask` prompts for the password without showing it. It needs a real terminal and fails inside your shell
 tool. Once the user is done, you continue with `server-use show trading-1`.
 
-## 2c. Key access already works
+The local CLI pins the host key, collects facts, installs this machine's key and proves a fresh key-only
+login. It deletes the login password after success, except when needed for a non-root user's sudo or when
+`--keep-password` was explicitly requested. Failed key setup retains password login and reports a hint.
+Tell the user the resulting login method and fingerprint; have them compare it with their provider's console.
 
-```
-server-use add web-1 deploy@198.51.100.7 --tag web
-server-use add web-1 deploy@198.51.100.7 --key ~/.ssh/id_ed25519_work
-```
+`--password-stdin` is for trusted local secret sources, not a password embedded in a generated command.
+Public MCP `servers(add)` supports existing local keys; it rejects password arguments. If a user already
+pasted a secret into chat, do not repeat it or pass it into more tool calls. Explain that it reached the model
+provider, recommend rotating it locally, and continue once local access is ready. Disabling password login
+with `server-use harden trading-1 --lock-password --yes` still requires approval and a verified key login.
 
-Without `--key`, server-use tries the ssh-agent and `~/.ssh/id_ed25519`, `id_ecdsa` and `id_rsa`. Load
-encrypted keys into the ssh-agent first.
-
-## 2d. Import ~/.ssh/config
+## 2c. Import ~/.ssh/config
 
 ```
 server-use import ssh-config --dry-run      # show what would be imported
@@ -108,8 +92,9 @@ inventory as `trading-1-agent`.
   server was reinstalled. Stop and ask the user to verify the new fingerprint. For a server that is already
   in the inventory, `server-use trust <name> --reset` runs only with the user's OK.
 - **"already exists"**: pick another name, or add `--force` to replace the entry.
-- **exit 8 later (sudo)**: the user is non-root and sudo needs a password. The user stores it:
-  `printf '%s' '…' | server-use set trading-1 sudo-password --stdin`.
+- **exit 8 later (sudo)**: the user is non-root and sudo needs a password. Have the user store it through
+  `server-use set trading-1 sudo-password --stdin` from a trusted local secret source in their own terminal.
+  Do not ask them to paste it into chat or read the stored value back.
 
 ## Change or remove
 

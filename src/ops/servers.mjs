@@ -115,7 +115,7 @@ export async function add(ctx, a) {
       deleteSecret(name)
       if (!keyInstalled || a.keepPassword) { setSecret(name, 'password', a.password); stored = 'password' }
       else if (user !== 'root' && /** @type {any} */ (facts).sudo === 'password') { setSecret(name, 'sudo', a.password); stored = 'sudo' }
-      if (keyInstalled) hints.push('The password went through the chat. Change it on the server (passwd) or lock password login: server-use harden ' + name + ' --lock-password --yes')
+      if (keyInstalled) hints.push('If you shared this password in chat, rotate it locally with passwd. After verifying key login, you can approve disabling password login: server-use harden ' + name + ' --lock-password --yes')
     }
 
     inventory.upsert(name, {

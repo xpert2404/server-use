@@ -40,11 +40,13 @@ alive() {
   case $p in ''|*[!0-9]*|0|1) return 1 ;; esac
   kill -0 "$p" 2>/dev/null || return 1
   [ -r "/proc/$p/cmdline" ] || return 0
-  tr '\0' '\n' <"/proc/$p/cmdline" | grep -qxF -- "$1"
+  { tr '\0' '\n' <"/proc/$p/cmdline"; } 2>/dev/null | grep -qxF -- "$1"
 }
 state() {
   if [ -s "$1/exit" ]; then echo "exited $(cat "$1/exit")"
   elif alive "$1"; then echo running
+  # The runner may have recorded its exit and disappeared during the liveness probe.
+  elif [ -s "$1/exit" ]; then echo "exited $(cat "$1/exit")"
   else echo unknown; fi
 }
 # Seconds the job ran (so far); empty when unknown (a job started before t0 existed).

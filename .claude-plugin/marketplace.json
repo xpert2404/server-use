@@ -1,6 +1,6 @@
 {
   "name": "server-use",
-  "description": "server-use: let your AI agent operate your servers over SSH.",
+  "description": "server-use: open-source server orchestration for AI agents, with SSH credentials kept local.",
   "owner": {
     "name": "Tyron Carlomagno"
   },
@@ -8,7 +8,7 @@
     {
       "name": "server-use",
       "source": "./",
-      "description": "Let your agent use your servers: persistent SSH connections, fleet exec, cron, jobs and deploys.",
+      "description": "Orchestrate your servers with AI while keeping SSH credentials local: fleet commands, jobs, cron and deploys.",
       "category": "Developer Tools"
     }
   ]

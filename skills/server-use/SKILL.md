@@ -11,8 +11,10 @@ description: >-
 # server-use
 
 `server-use` gives you hands on the user's servers. A local daemon (starts by itself) keeps one SSH
-connection per server, so after the first call every command costs one round trip. Nothing gets installed
-on the servers. Full options for one verb: `server-use help <verb>`.
+connection per server so follow-up commands reuse the connection. No remote agent or package is required;
+jobs, cron, watch and deploys create managed files. Full options for one verb:
+`server-use help <verb>`. SSH credentials stay local when onboarding uses existing keys, the user's own terminal
+or a trusted local secret source. Never request them in chat or tool arguments.
 
 ## Is it installed?
 
@@ -84,7 +86,7 @@ Better still, cut the output down on the server (`| tail -n 50`, `grep`, `logs -
 | 5 | unreachable | the server is down or rebooting, the IP/port is wrong, or a firewall blocks it. Check `show <name>` and retry once. Don't loop |
 | 6 | authentication failed | the key isn't accepted or the password changed. Ask the user (add-server skill) |
 | 7 | server is `readonly` | don't change the policy yourself; ask the user |
-| 8 | sudo needs a password that isn't stored | the user stores it: `printf '%s' '…' \| server-use set <name> sudo-password --stdin` |
+| 8 | sudo needs a password that isn't stored | the user supplies it locally through `server-use set <name> sudo-password --stdin` from a trusted secret source; never request the value in chat |
 | 124 | timeout | use `job start`, or set a larger `--timeout` |
 
 Exit codes 2–8 can also be the remote command's own status. The host line tells you which one it is:
@@ -158,10 +160,14 @@ get, then edit locally, then put.
 
 - Never print secret values. Don't `cat` a `.env`, don't run `env`/`printenv`, and don't show private keys
   or `/etc/shadow`. `server-use env ls` shows only the keys.
-- Secret values go in on stdin (`env set`, `set … --stdin`, `add --password-stdin`). Never put them in the
-  command, in `--env` or in notes. The command line ends up in the remote process list, the audit log and
-  this transcript.
-- If the user pastes a secret into the chat, use it once via stdin and don't repeat it in your replies.
+- Secret values come from the user's own terminal or a trusted local secret source on stdin (`env set`,
+  `set … --stdin`, `add --password-stdin`). For password onboarding, have the user run `add --ask` in their
+  own terminal. A shell pipeline may read a local secret without returning its value; never read the value
+  into your context first, put it in a generated command, `--env` or notes, or print it for confirmation.
+- Public stdio MCP rejects login-password and `.env` value arguments. Use local CLI setup instead.
+- If the user pastes a secret into chat, do not repeat it or pass it into another tool call. Explain that it
+  reached the model provider, recommend local rotation, and resume after local setup. Arbitrary command output
+  and logs can still expose secrets; return only the information the task needs.
 
 ## Notes: the server's memory
 

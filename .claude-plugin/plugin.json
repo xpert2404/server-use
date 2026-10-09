@@ -2,7 +2,7 @@
   "name": "server-use",
   "displayName": "server-use",
   "version": "0.1.0",
-  "description": "Let your agent use your servers: persistent SSH connections, fleet exec, cron, jobs and deploys. Skills plus the server-use CLI on the Bash PATH.",
+  "description": "Orchestrate your servers with Claude Code while keeping SSH credentials local. Skills plus the server-use CLI on the Bash PATH for fleet commands, jobs, cron and deploys.",
   "author": {
     "name": "Tyron Carlomagno"
   },

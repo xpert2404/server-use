@@ -1,12 +1,13 @@
 # Architecture
 
 server-use is a thin client, a background daemon, and a set of small POSIX shell scripts that are streamed to the
-servers over the SSH connection the daemon already holds. Nothing is installed on the servers.
+servers over the SSH connection the daemon already holds. No remote agent or package is required; jobs, cron,
+watch and deploys create managed files described below.
 
 ```
  Claude Code ─┐                                          ┌── web1
  Codex ───────┤ server-use CLI / mcp                     │
- NEXUS ───────┼──────────────> daemon (one per user) ────┼── web2    one SSH connection per server,
+ MCP client ──┼──────────────> daemon (one per user) ────┼── web2    one SSH connection per server,
  any agent ───┘  named pipe or Unix socket + token       │           up to 8 channels on each
                                                          └── db1
 ```
@@ -108,9 +109,11 @@ code of the first failing host. The skills teach the model what each means.
 ## Integrations
 
 - **Claude Code**: `.claude-plugin/` (plugin + marketplace); skills become `/server-use:<skill>`, `bin/` lands on PATH.
-- **Codex / agent plugins**: `plugin.json` and `.agents/plugins/marketplace.json`; Codex has no `bin/`, so the CLI
-  comes from `npm i -g`, and MCP is the way through its sandbox.
+- **Codex / agent plugins**: `plugin.json` and `.agents/plugins/marketplace.json`; in the verified Codex 0.160 setup,
+  the plugin does not add `bin/`, so the CLI comes from `npm i -g` and local stdio MCP provides server access.
 - **MCP**: `server-use mcp`, thirteen tools (`servers`, `exec`, `transfer`, `logs`, `cron`, `job`, `deploy`,
   `check`, `doctor`, `watch`, `runbook`, `run`, `permissions`).
+- **Other shell/skills clients**: use the same CLI and install the skills in the client's configured directory.
+  Client-specific installations beyond the recorded Claude Code/Codex checks remain unverified.
 - **NEXUS Harness**: the `nexus-server-use` plugin in that repository registers the MCP tool table as native
   `server_*` tools with real approval dialogs, and the AI attaches servers to a conversation itself.

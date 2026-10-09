@@ -85,18 +85,19 @@ get cloned over SSH automatically. On other hosts (GitLab, Gitea), pass the SSH 
 
 ## .env values (secrets)
 
-The value always goes in on stdin, never as `KEY=value` on the command line, and never `cat` the file.
+The value comes from a trusted local source on stdin, never chat, model arguments or `KEY=value` on the command
+line. Never `cat` the file or read the value into your context before running the pipeline.
 
 ```
-sed -n 's/^OPENAI_API_KEY=//p' .env | server-use env set lab tradingagents OPENAI_API_KEY   # from a local file; you never see it
-printf '%s' 'VALUE-FROM-CHAT' | server-use env set lab tradingagents OPENAI_API_KEY         # if the user pasted it
-server-use env ls lab tradingagents                                                         # shows keys only
-server-use env rm lab tradingagents OLD_KEY
+sed -n 's/^APP_API_KEY=//p' .env | server-use env set web-1 api APP_API_KEY   # local pipe; do not print the value
+server-use env ls web-1 api                                               # shows keys only
+server-use env rm web-1 api OLD_KEY
 ```
 
-- The user can also run it in their own terminal, e.g. `Get-Clipboard | server-use env set …` (PowerShell)
-  or `pbpaste | server-use env set …` (macOS). Offer that for sensitive keys. If a key went through the chat,
-  say so and suggest rotating it.
+- The user can also supply the value in their own terminal, e.g. `Get-Clipboard | server-use env set …`
+  (PowerShell) or `pbpaste | server-use env set …` (macOS). Public stdio MCP intentionally has no `env_set`
+  action or secret-value argument. If a key went through chat, do not reuse it in model-generated tool calls;
+  explain the exposure and recommend rotating it locally.
 - If the deploy used `--base`, pass the same `--base` to `env`.
 - After a change, restart the app: `server-use exec web-1 'systemctl restart server-use-api'` (add `--sudo`
   when you aren't root). For compose, run `server-use exec web-1 --cwd /opt/shop/current 'docker compose -p shop up -d --force-recreate'`.

@@ -11,10 +11,17 @@ CLI plus Agent Skills plus an MCP server; works in Claude Code, Codex, NEXUS Har
 Agentless: servers need only `sshd` and a POSIX shell. Repo: https://github.com/xpert2404/server-use (public, MIT).
 Owner: Tyron Carlomagno.
 
+The public product is standalone and useful across agents. NEXUS is one optional integration. Its core promise:
+orchestrate and manage your own servers without supplying login credentials to AI providers. Onboard locally
+using existing SSH keys, a human terminal or a trusted local secret source; cloud agents may still receive the
+commands and outputs they handle.
+
 ## Product direction (decided by the owner, binding)
 
 1. **Free and open source.** MIT, no accounts, no paid tiers, no telemetry. It must be genuinely useful for
-   people who run VPSes; prefer features with concrete VPS value over polish.
+   people who run VPSes across Claude Code, Codex and other agents; prefer features with concrete VPS value over
+   polish. Keep credentials out of model chat/tool arguments through local onboarding. Public stdio MCP does not
+   accept password or `.env` value inputs; native adapters are responsible for their own local credential UI.
 2. **The AI uses it autonomously, but a chat must not get all servers automatically.** The AI attaches the servers
    a task needs when it judges it fits, visible to the user. In CLI agents this is what the skills do (a server
    is only touched when a server command runs). In NEXUS it is the `server_connect` tool plus a user override
@@ -44,6 +51,12 @@ above; do not copy content from those two files into the repo.
 
 ## Status
 
+- **General product/privacy alignment (2026-10-09):** public README/manifests and onboarding skills emphasize
+  the standalone MIT CLI, skills and stdio MCP for different agents. Local SSH keys or human terminal input are
+  the default. Public MCP rejects credential payloads before daemon access; privileged local adapter APIs stay
+  compatible. Arbitrary command/output secrecy is not claimed. Validation also fixed an exit-observation race
+  in timed jobs; full unit/integration and real-sshd suites pass (counts in ACCEPTANCE). Versions remain unchanged
+  pending release.
 - **0.1.0 released** on 2026-10-03: tag `v0.1.0`, GitHub release, CI green on Ubuntu/Windows/macOS x Node 22/24 and
   the Debian-sshd e2e job. Claude Code plugin install and Codex (0.160) plugin + MCP verified, see
   [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).

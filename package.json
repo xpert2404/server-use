@@ -1,7 +1,7 @@
 {
   "name": "server-use",
   "version": "0.1.0",
-  "description": "Let your AI agent use your servers: persistent SSH connections, fleet exec, cron, jobs and deploys for Claude Code, Codex, NEXUS Harness and any agent with a shell.",
+  "description": "Orchestrate your servers with AI while keeping SSH credentials local. Open-source CLI, skills and MCP for Claude Code, Codex and other agents.",
   "type": "module",
   "bin": {
     "server-use": "bin/server-use.mjs"

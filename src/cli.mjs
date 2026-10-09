@@ -26,7 +26,8 @@ Global:   --json (machine-readable), exit codes: 0 ok · 2 usage/unknown server 
   Pins the host key, logs in, collects facts. With a password it installs this machine's key, proves key login
   and then deletes the password (kept as sudo password for non-root users whose sudo needs one).
   --keep-password  keep the login password   --no-install-key  don't install a key   --note "<text>"   --force  replace
-  Example: printf '%s' 'PASSWORD' | server-use add trading-1 root@1.2.3.4 --password-stdin --tag trading`,
+  Example (in your own terminal): server-use add trading-1 root@203.0.113.10 --ask --tag trading
+  For automation, --password-stdin reads from a trusted local secret source; never paste passwords into agent chat.`,
   import: `server-use import [ssh-config] [--path ~/.ssh/config] [--dry-run] [--user root] [--force]
   Imports Host entries from your OpenSSH config (wildcards skipped).`,
   ls: 'server-use ls — inventory with connection state',
@@ -167,7 +168,7 @@ const VERBS = {
     const { v } = parse(args)
     const r = await call('servers.list')
     if (v.json) return json(r)
-    if (!r.servers.length) return print('inventory is empty — add a server: server-use add <name> <user@host> [--password-stdin]')
+    if (!r.servers.length) return print('inventory is empty — add with an existing SSH key, or run server-use add <name> <user@host> --ask in your own terminal')
     const rows = r.servers.map((/** @type {any} */ s) => [s.name, `${s.user}@${s.host}:${s.port}`, s.policy, s.auth, s.connection, (s.tags || []).join(','), s.os || ''])
     print(table([['NAME', 'ADDRESS', 'POLICY', 'AUTH', 'CONN', 'TAGS', 'OS'], ...rows]))
   },
@@ -194,7 +195,7 @@ const VERBS = {
     if (p.length < 2) throw new UsageError(HELP.set)
     const [name, ...pairs] = p
     if (['password', 'sudo-password', 'passphrase'].includes(pairs[0])) {
-      if (!v.stdin) throw new UsageError(`secrets are only read from stdin: printf '%s' '...' | server-use set ${name} ${pairs[0]} --stdin`)
+      if (!v.stdin) throw new UsageError(`secrets are only read from local stdin: server-use set ${name} ${pairs[0]} --stdin; use a trusted local secret source, never agent chat`)
       const value = (await readStdin()).replace(/\r?\n$/, '')
       await call('servers.set', { name, secret: { kind: pairs[0], value } })
       return print(value ? `stored ${pairs[0]} for ${name}` : `deleted ${pairs[0]} for ${name}`)
@@ -586,7 +587,7 @@ async function readScript(/** @type {string} */ src) {
 
 /** Prompt without echo (for humans running `add --ask` in their own terminal). */
 function askHidden(/** @type {string} */ prompt) {
-  if (!process.stdin.isTTY) throw new UsageError('--ask needs a terminal; agents should use --password-stdin')
+  if (!process.stdin.isTTY) throw new UsageError('--ask needs your own interactive terminal; use existing SSH keys or a trusted local stdin source for automation, never agent chat')
   return new Promise((res) => {
     process.stderr.write(prompt)
     const stdin = process.stdin

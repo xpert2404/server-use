@@ -1,5 +1,5 @@
 // @ts-check
-// Append-only log of everything server-use did on a server. Never contains secrets.
+// Append-only operation log. Dedicated credential channels are excluded; commands must not embed secrets.
 import { appendFileSync, readFileSync, existsSync } from 'node:fs'
 import { file, ensureHome } from './paths.mjs'
 

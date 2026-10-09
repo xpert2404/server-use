@@ -1,22 +1,44 @@
 # server-use
 
-Let your AI agent use your servers.
+Orchestrate and manage your servers with AI. Keep SSH credentials local.
 
-browser-use gives an agent a browser, computer-use gives it a desktop. server-use gives it your servers over SSH: an
-inventory, one pooled connection per server held by a background daemon, fleet exec, status, logs, files,
-long-running jobs, cron, `.env` files and git deploys with rollback.
+server-use gives Claude Code, Codex and other AI agents practical SSH access to your own servers without needing
+your login passwords or private key contents in chat or model tool arguments. Connect locally once, then let the
+agent inspect a VPS, run fleet commands, manage jobs and cron, or deploy an application with rollback.
 
-It is a CLI plus a set of skills that teach the model when and how to use it, so it works in any agent with a shell:
-Claude Code, Codex, NEXUS Harness, Cursor, Gemini CLI, OpenCode, Hermes. An MCP server is included for clients
-without a shell.
+It is a standalone, free and open-source project: MIT, no server-use accounts, no hosted control plane, no paid
+tiers and no telemetry. A local daemon pools SSH connections; a CLI, portable skills and a local stdio MCP server
+let you use the same inventory from different agents.
 
-Nothing is installed on your servers. They need `sshd` and a POSIX shell.
+Claude Code and Codex plugin installs are verified. Other agents, including Cursor, Gemini CLI, OpenCode and
+Hermes, can integrate through a shell or a local stdio MCP connection; their individual client setups have not
+all been tested. NEXUS Harness is [one optional integration](docs/NEXUS.md).
 
-**Status: 0.1.0, alpha.** Client: Windows, macOS or Linux with Node.js 22+. Servers: Debian/Ubuntu, RHEL family,
-Alpine, Arch; macOS best effort. Not on the npm registry yet: `npm i -g github:xpert2404/server-use` installs the
-CLI straight from GitHub.
+No remote agent or package is required: servers need `sshd` and a POSIX shell. Features such as jobs, cron,
+monitoring and deploys create their own managed files, listed [below](#what-runs-on-the-server).
+
+**Latest release: 0.1.0, alpha.** `main` also contains the implemented, unreleased 0.2 features. Client: Windows,
+macOS or Linux with Node.js 22+. Real-sshd acceptance covers Debian/Ubuntu; other Linux distributions are
+compatibility targets, not claimed acceptance results. Not on the npm registry yet:
+`npm i -g github:xpert2404/server-use` installs the current GitHub source. See [acceptance evidence](docs/ACCEPTANCE.md).
 
 ## Quickstart
+
+### Connect a server privately
+
+Run this in **your own terminal**, outside the agent's chat and shell tool:
+
+```sh
+npm i -g github:xpert2404/server-use
+server-use add web1 deploy@203.0.113.10 --ask --tag prod
+```
+
+`--ask` reads the password without echoing it. server-use installs this machine's SSH key and verifies a fresh
+key login. Compare the printed host-key fingerprint with your server provider's console. If SSH key access
+already works, omit `--ask`, or use `--key /path/to/key`; never paste the private key contents into chat.
+
+Then install the integration for your agent below. The agent uses the stored local access; it does not need
+the login password. Passwords are kept locally only when needed for sudo, failed key setup or explicit retention.
 
 ### Claude Code
 
@@ -29,7 +51,7 @@ The plugin adds the skills (`/server-use:server-use`, `add-server`, `deploy-repo
 and puts `server-use` on the Bash tool's PATH (`bin/server-use` for Git Bash, `bin/server-use.cmd` for cmd). Then
 ask for what you want:
 
-> Add my server 203.0.113.10, user root, tag it prod, and show me its status.
+> Check web1, show me what needs attention, and inspect the application logs.
 
 ### Codex
 
@@ -40,16 +62,16 @@ npm i -g github:xpert2404/server-use
 codex mcp add server-use -- server-use mcp
 ```
 
-The plugin brings the skills; Codex plugins have no `bin/`, hence the global install. In Codex's default
-`workspace-write` sandbox, shell commands have no network access and cannot write outside the workspace, so the
-CLI cannot reach your servers from there. The MCP server runs outside the sandbox, which is why the last line
-registers it (tested with Codex 0.160 in `workspace-write`). For `codex exec` without a person to approve tool
+The verified Codex 0.160 setup uses the plugin for skills and a global CLI install because that plugin does not
+add `bin/` to PATH. In that version's default `workspace-write` sandbox, shell commands cannot reach the servers;
+the local MCP process runs outside that sandbox, which is why the last line registers it. These are recorded
+results for that version, rather than a promise about every client's sandbox. For `codex exec` without a person to approve tool
 calls, add `default_tools_approval_mode = "approve"` under `[mcp_servers.server-use]` in `~/.codex/config.toml`;
 server-use's own per-server policy still stops destructive commands on `confirm` servers. Older Codex versions on
 Windows start MCP servers without `SYSTEMROOT`, which crashes Node; there, add
 `env = { SYSTEMROOT = 'C:\Windows' }` to the same section.
 
-### NEXUS Harness and any other agent
+### Other agents with a shell or skills support
 
 ```
 npm i -g github:xpert2404/server-use
@@ -57,8 +79,9 @@ server-use skills install                      # into ~/.agents/skills
 server-use skills install --dir <skills dir>   # or wherever your agent reads skills
 ```
 
-In a container, point `SERVER_USE_HOME` at a persistent volume (for example `/dsh-home/.server-use`) so the
-inventory, keys and pinned host keys survive restarts.
+Use your agent's documented skills directory; the default `~/.agents/skills` is not discovered by every client.
+The CLI also works without skills. In a container, point `SERVER_USE_HOME` at a persistent volume (for example
+`/data/.server-use`) so the inventory, keys and pinned host keys survive restarts.
 
 ### MCP
 
@@ -70,17 +93,33 @@ claude mcp add server-use -- server-use mcp
 codex mcp add server-use -- server-use mcp
 ```
 
-This needs `server-use` on your PATH (`npm i -g github:xpert2404/server-use`). Tools: `servers`, `exec`, `transfer`, `logs`, `cron`,
-`job`, `deploy`. MCP servers run outside the Codex sandbox, so this is the way to reach servers from Codex without
-loosening its sandbox.
+This needs `server-use` on your PATH (`npm i -g github:xpert2404/server-use`). For other MCP clients, configure a
+**local stdio server** with command `server-use` and arguments `["mcp"]`; there is no HTTP/SSE endpoint.
+The current source exposes thirteen tools: `servers`, `exec`, `transfer`, `logs`, `cron`, `job`, `deploy`,
+`check`, `doctor`, `watch`, `runbook`, `run` and `permissions`. The v0.1.0 tag has the first seven.
+
+Public MCP inputs exclude login passwords and `.env` values. Password onboarding uses the local terminal;
+secret values use CLI stdin from a trusted local source. MCP `servers(add)` uses existing local SSH keys or
+ssh-agent; it never needs the key contents as a model argument.
+
+## Keep credentials local
+
+SSH authentication runs between your local machine and your servers. Passwords and key passphrases are stored
+in the OS keychain, or a private local file when no keychain is available; private keys stay in local key files
+or ssh-agent. server-use has no service that receives them. Use `--ask` in your own terminal, existing keys or
+a trusted local secret source. Passing a secret through stdin protects it only when its value was never included
+in the model's chat or tool arguments; a generated command containing the password still exposes it to the provider.
+
+With a cloud-backed agent, your prompts, tool arguments and returned command output can reach that agent's
+provider. Do not print `.env` files, private keys or secrets in logs. server-use does not hide arbitrary command
+input/output or turn a cloud model into an offline one. See [the security model](docs/SECURITY.md).
 
 ## Command tour
 
 Targets are `web1`, `web1,web2`, `tag:prod` or `all`. `server-use help <verb>` prints every option.
 
 ```sh
-server-use add web1 root@203.0.113.10 --ask --tag prod   # pin host key, install a key, collect facts
-                                              # (agents pipe the password into --password-stdin)
+server-use add web1 deploy@203.0.113.10 --ask --tag prod   # user runs in their own terminal; pin host key, install a key
 server-use import ssh-config                  # take Host entries from ~/.ssh/config
 server-use ls                                 # inventory with connection state
 server-use status all                         # one line per server: uptime, load, memory, disk, failed units
@@ -193,7 +232,7 @@ Remote tools require an explicit target. Watch credentials use CLI stdin rather 
 ```
 Claude Code ─┐                                          ┌── web1
 Codex ───────┤ server-use CLI / mcp                     │
-NEXUS ───────┼──────────────> daemon (one per user) ────┼── web2    one SSH connection per server,
+MCP client ──┼──────────────> daemon (one per user) ────┼── web2    one SSH connection per server,
 any agent ───┘  named pipe or Unix socket + token       │           up to 8 channels on each
                                                         └── db1
 ```
@@ -236,10 +275,11 @@ are real boundaries.
   `~/.ssh/known_hosts`) and shows the fingerprint. A changed key stops everything with exit 4; only
   `server-use trust <server> --reset`, after you verified the change, clears it (for an address that is no longer
   in the inventory, the error names the line to delete).
-- **Secrets stay out of the inventory, logs and process lists.** Passwords, sudo passwords and key passphrases go into the OS
+- **Credentials supplied through local credential channels stay out of the inventory, audit and tool results.** Passwords, sudo passwords and key passphrases go into the OS
   keychain (Windows Credential Manager, macOS Keychain, Secret Service). Without one (headless Linux, containers,
   or `SERVER_USE_SECRETS=file`) they go into `~/.server-use/secrets.json` with mode 0600, the same trust level as
-  `~/.ssh/id_*`. They never appear in argv, `ls`/`show` output or the audit log; sudo gets its password on stdin.
+  `~/.ssh/id_*`. server-use does not add those stored values to argv, `ls`/`show` output or the audit log;
+  sudo gets its password on stdin. Arbitrary commands and returned output can still contain secrets if you put them there.
 - **A password typed into the chat reaches the model provider** and stays in the transcript. `add` therefore
   installs this machine's key right away, proves key login on a fresh connection and deletes the password. It keeps
   it only if key login could not be set up, or as the sudo password for a non-root user who needs one. Change the
@@ -251,14 +291,14 @@ are real boundaries.
 
 ## What runs on the server
 
-Nothing gets installed. Plain commands run through the pooled SSH connection. Everything else is a POSIX `sh`
+No remote agent or package is required. Plain commands run through the pooled SSH connection. Operations use POSIX `sh`
 script from [`remote/`](remote/) streamed over stdin (`sh -s`, or `sudo sh -s`). Arguments arrive as shell variable
 assignments in front of the script, never as argv, so they do not show up in `ps`; payloads such as commands,
 scripts and `.env` values are base64-encoded.
 
 What server-use leaves behind is visible and removable:
 
-- `~/.server-use/` of the SSH user: job output and exit codes, cron wrappers and logs.
+- `~/.server-use/` of the SSH user: job output and exit codes, cron/watch wrappers, private monitoring config and logs.
 - A marked block in the user's crontab. Lines outside it are never touched.
 - Deploys under `/opt/<name>` (root) or `~/apps/<name>`, and `server-use-<name>.service` when `--run` is used as
   root.
