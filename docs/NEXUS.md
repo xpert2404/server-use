@@ -94,10 +94,15 @@ automatic install that fails there. Lint is oxlint (`CI=true node node_modules/o
 
 See the *Open* part of `nexus-harness/docs/SERVER-USE.md` for the current list. At the time of writing: the
 approval dialog, the per-session switch, the masked password and the Server rubric have unit/composition tests but
-no run in the real desktop app, container or phone UI (device acceptance by the owner). The integration is
-committed locally in the fork and overlay, with the generated settings-controller runtime and matching submodule
-pointer. Neither NEXUS repo is pushed: the owner's explicit push approval is still required because another
-session also deploys from that repository. Both safety stashes are retained.
+no run in the real desktop app, container or phone UI (device acceptance by the owner).
+
+Publication reconciled on 2026-10-09: overlay `4ed854a` is included in remote main `0387a67`, which pins published
+fork `e62b16ee79`. That fork preserves the original local `c01bbf28a9` server contracts, including the shell guard
+and secret-question protection; the guard source hash matches the generated runtime manifest. The plugin,
+fallback guard and sync script are unchanged from `4ed854a`. No further push is needed for this integration.
+The shared local checkout still has an older pointer; coordinate any update with the other sessions deploying
+from that repository. Both safety stashes are retained. This review does not claim overall NEXUS CI or deployment
+acceptance.
 
 The installer/container pins remain `v0.1.0` until an explicit 0.2 release. Vendored skills include 0.2 commands
 with availability checks and 0.1 fallbacks; the plugin registers only tools the installed MCP source exports.

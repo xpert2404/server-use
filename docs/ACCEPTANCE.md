@@ -43,11 +43,19 @@ The Windows runs below use Node 24. Unit runs unset `SU_E2E_HOST`/`SU_E2E_PORT`;
 | Key generation | Invalid generated Ed25519 pairs never reach a new key file or fixture host | `node --test --test-reporter=tap test/keygen.test.mjs test/unit.test.mjs`: 28/28; deterministic malformed-first/valid-next and exhaustion controls, pair/type mismatch rejection, stable persisted keys and POSIX modes. The prior intermittent CI failure was traced to ssh2 1.17's DER leading-zero conversion. |
 | Daemon transport | Socket failure cannot crash the client or replay a mutating request | `node --test --test-reporter=tap test/client.test.mjs`: 9/9; deterministic EPIPE at connection/hello/auth/request handoffs, multiple pending requests, closed-client refusal and authentication privacy. `node --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='a fake daemon squatting\|a connection without the right token\|the daemon restarting during a wait' test/daemon.test.mjs test/jobwait.test.mjs`: 3/3. A separate deterministic deadline test proves earlier running state is not misreported as current after a later probe stalls. |
 | Packaging | New runtime files ship; plugin manifest stays valid | `npm pack --dry-run --json`: 52 files, including all new remote scripts/operations and `src/keygen.mjs`; `claude plugin validate .`: validation passed. |
-| NEXUS | Native attachments, approvals, masked credentials and direct-shell switch denial tested | Plugin 19/19, real dsh composition 6/6, settings-controller 62/62, preset/project 11/11, runtime 9/9, approval/password UI 18/18, connector-policy browser 5/5; isolated build passes, Svelte check 0 errors/24 warnings, scoped lint passes. Commands are in the sibling `nexus-harness/docs/SERVER-USE.md`; fork `c01bbf28a9` and overlay `4ed854a` are local, with both pushes awaiting explicit owner approval. |
+| NEXUS | Native attachments, approvals, masked credentials and direct-shell switch denial tested | Plugin 19/19, real dsh composition 6/6, settings-controller 62/62, preset/project 11/11, runtime 9/9, approval/password UI 18/18, connector-policy browser 5/5; isolated build passes, Svelte check 0 errors/24 warnings, scoped lint passes. Commands are in the sibling `nexus-harness/docs/SERVER-USE.md`. These tests cover the original fork `c01bbf28a9` and overlay `4ed854a`; publication was reconciled separately below. |
 
 Independent runtime review found no remaining blockers after the wait deadline, doctor redaction/file-tail,
 watch root-path and timebox corrections. Separate reviews verified the final key-generation helper and daemon
 transport error handling, including authentication order and rejection without request replay.
+
+Publication checked on 2026-10-09: `gh run view 37691328731 --json status,conclusion,headSha,jobs`
+confirmed all seven CI jobs passed at `e54559c`; [CI evidence](https://github.com/xpert2404/server-use/actions/runs/37691328731).
+The later documentation-only `2471c9b` also passed [CI](https://github.com/xpert2404/server-use/actions/runs/37908516607).
+After fetching the NEXUS remotes, ancestry checks confirmed overlay `4ed854a` in remote main `0387a67`.
+That main pins published fork `e62b16ee79`, which preserves the original server contracts and has a guard source
+hash matching its generated runtime manifest. Plugin, fallback guard and skill sync script are unchanged from
+`4ed854a`. This source/publication review does not claim new device acceptance or overall NEXUS CI results.
 
 ## Not verified yet
 

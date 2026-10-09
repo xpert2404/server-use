@@ -57,11 +57,16 @@ above; do not copy content from those two files into the repo.
   existing reconnect path. Deadline tests distinguish a fresh running snapshot from unknown state when a probe
   times out, and verify that waiting never stops the detached job. See [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).
 - **0.3 planned**: `guard`, `site`, `backup`.
-- **NEXUS shell gap closed locally:** when `servers` is off, `connectorDenial` also denies direct `server-use`
+- **NEXUS integration publication reconciled (2026-10-09):** overlay `4ed854a` is included in the remote
+  `nexus-harness/main` (`0387a67`). That branch pins published fork `e62b16ee79`, which preserves the server
+  contracts from the original local `c01bbf28a9`; its guard source matches the generated runtime manifest.
+  When `servers` is off, `connectorDenial` also denies direct `server-use`
   commands in `bash`/`pwsh` (case insensitive). Fork tests and regenerated `runtime/product` are verified.
   This is a tool guard; aliases/dynamic commands/other process tools still depend on shell approvals.
-  Fork commit `c01bbf28a9` and overlay commit `4ed854a` are local, with matching submodule pointer; both pushes
-  require the owner's explicit approval. Both GitHub Desktop safety stashes are retained.
+  No further NEXUS push is needed for this integration. The shared local Harness checkout still has an older
+  pointer; coordinate with other sessions before updating it. Both GitHub Desktop safety stashes are retained.
+- **Server-use CI verified (2026-10-09):** implementation commit `e54559c` passed all seven CI jobs
+  (Ubuntu/Windows/macOS x Node 22/24 and Debian-sshd e2e); subsequent documentation commit `2471c9b` also passed.
 - **NEXUS integration** lives in the sibling repo `nexus-harness` (private org repo, `../nexus-harness` next to
   this checkout). Status and file map in [docs/NEXUS.md](docs/NEXUS.md).
 - **Not on the npm registry yet.** Install with `npm i -g github:xpert2404/server-use`. If npm resolves the
