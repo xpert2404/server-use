@@ -124,3 +124,10 @@ above; do not copy content from those two files into the repo.
    project` in a temp project, then run the cached launchers (`~/.claude/plugins/cache/server-use/...`).
 6. Downstream: bump the pinned tag in `nexus-harness` (`scripts/install-local.ps1`, `docker/Dockerfile`) and run
    `node scripts/sync-server-use.mjs` there to re-vendor the skills.
+
+## Kleine Pakete, schnelle Integration und Patchauslieferung
+
+- Nach jedem kleinen, sinnvoll nutzbaren und passend geprüften Paket Code und den bestehenden aktuellen Plan, Abnahme-/GATES-Nachweis und Status gemeinsam aktualisieren, selektiv committen und pushen. Die vorhandenen Plan- und Statusdateien nutzen; keine parallele Planquelle anlegen.
+- Geprüfte Pakete zeitnah in den maßgeblichen Hauptzweig integrieren. Den vorhandenen Release-/Deployprozess für häufigere echte kleine Patchreleases beziehungsweise die passende Auslieferung nutzen, statt fertige Arbeit für ein Sammelrelease zurückzuhalten. Ein Commit oder Push allein belegt weder Release noch Installer oder Deployment.
+- Tyron je Paket den konkreten testbaren Stand mit Commit, Version soweit vorhanden, Zugang und sichtbaren Änderungen nennen. Bestandene Prüfungen, offene Punkte sowie Geräte- und Deploymentgrenzen getrennt ausweisen; offene Prüfungen nicht als bestanden melden.
+- Parallele Chats, Forks, Versionen, Releasepins und Feeds vor Integration und Auslieferung koordinieren. Fremde Arbeit erhalten und ausschließlich eigene Pfade versionieren.
