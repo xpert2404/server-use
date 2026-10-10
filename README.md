@@ -17,7 +17,7 @@ all been tested. NEXUS Harness is [one optional integration](docs/NEXUS.md).
 No remote agent or package is required: servers need `sshd` and a POSIX shell. Features such as jobs, cron,
 monitoring and deploys create their own managed files, listed [below](#what-runs-on-the-server).
 
-**Version: 0.2.0, alpha.** Client: Windows,
+**Latest release: 0.2.0, alpha.** Client: Windows,
 macOS or Linux with Node.js 22+. Real-sshd acceptance covers Debian/Ubuntu; other Linux distributions are
 compatibility targets, not claimed acceptance results. Not on the npm registry yet:
 `npm i -g github:xpert2404/server-use` installs the current GitHub source. See [acceptance evidence](docs/ACCEPTANCE.md).

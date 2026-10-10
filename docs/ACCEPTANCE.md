@@ -7,13 +7,15 @@ command you ran.
 Test environment of the evidence below: Windows 11 dev machine (Node 24), WSL Ubuntu 24.04 sshd fixture on port
 2222 (see [TESTING.md](TESTING.md)), GitHub Actions for the CI matrix.
 
-## 0.2.0 release preparation (2026-10-10)
+## Verified 0.2.0 release (2026-10-10)
 
 - `node --test test/key-import.test.mjs test/mcp-ops.test.mjs test/mcp-privacy.test.mjs`: 10 passed, zero failures/skips. Existing-key import, encrypted-key onboarding/reconnect and credential rejection are covered.
 - `SU_E2E_HOST=127.0.0.1 SU_E2E_PORT=2222 node --test --test-concurrency=1 "test/e2e/*.test.mjs"`: 61 passed, zero failures/skips (real WSL sshd).
 - `claude plugin validate .`: passed. `npm pack --dry-run --json`: includes runtime and manifests at 0.2.0.
 - `npm test`: 189 tests, 186 passed, three platform/environment skips, zero failures. A one-second MCP wait fixture was corrected to release its job explicitly after the running-state assertion; unknown-state timeout behavior remains unchanged.
-- CI and release delivery still pending at this source commit.
+- All seven GitHub CI jobs passed for 53719c7: https://github.com/xpert2404/server-use/actions/runs/38082281723. Annotated v0.2.0 tag and GitHub release published. Temporary tag install, actual global install and cached Claude plugin launcher all report 0.2.0.
+- Actual local key discovery found two existing private keys; config import registered three distinct hosts. Existing-key root login/status against the current NEXUS infrastructure succeeded, with no password stored. A harmless real remote CONFIRM command through the NEXUS adapter retried automatically under explicit root Bypass; approval.request was not called. Three older config targets reported authentication/unreachable errors; no assertion of working access to those hosts. A stale local daemon PID lock was verified as belonging to a reused unrelated process and recovered without terminating it.
+- NEXUS 0.9.8 installer and live rollout are tracked in the downstream repository, not implied by this standalone release.
 
 ## Verified (v0.1.0, 2026-10-03)
 

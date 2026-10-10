@@ -51,7 +51,7 @@ above; do not copy content from those two files into the repo.
 
 ## Status
 
-- **0.2.0 delivery work (2026-10-10):** local key metadata/import and native inventory administration, encrypted-key onboarding and expanded MCP operations implemented. NEXUS adapter auto-confirms in root Bypass and supports masked local secret input. Real-sshd suite: 61/61; focused key/MCP/privacy suite: 10/10. Full unit suite: 189 tests, 186 passed, three skips, zero failures. CI and publication pending at this source commit.
+- **0.2.0 released (2026-10-10):** local key metadata/import and native inventory administration, encrypted-key onboarding and expanded MCP operations implemented. NEXUS adapter auto-confirms in root Bypass and supports masked local secret input. Real-sshd suite: 61/61; focused key/MCP/privacy suite: 10/10. Full unit suite: 189 tests, 186 passed, three skips, zero failures. All seven CI jobs passed for 53719c7 (run 38082281723); tag v0.2.0 and GitHub release published. Tag installation, global upgrade and cached Claude plugin launcher report 0.2.0. Native NEXUS delivery remains tracked downstream.
 
 - **General product/privacy alignment (2026-10-09):** public README/manifests and onboarding skills emphasize
   the standalone MIT CLI, skills and stdio MCP for different agents. Local SSH keys or human terminal input are
@@ -62,11 +62,11 @@ above; do not copy content from those two files into the repo.
 - **0.1.0 released** on 2026-10-03: tag `v0.1.0`, GitHub release, CI green on Ubuntu/Windows/macOS x Node 22/24 and
   the Debian-sshd e2e job. Claude Code plugin install and Codex (0.160) plugin + MCP verified, see
   [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).
-- **0.2 implemented, unreleased** (2026-10-07): `check`, `watch`, `job wait`/`--max-time`, `runbook`/`run`/
+- **0.2 implemented** (2026-10-07; released 2026-10-10): `check`, `watch`, `job wait`/`--max-time`, `runbook`/`run`/
   `permissions` and `doctor` are integrated through CLI, daemon and MCP, with unit and real-sshd e2e tests,
   reviewed policy/secret boundaries, README/skill updates and changelog entries. See
   [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for exact commands and counts. The interrupted draft work is resolved.
-  Package and plugin versions stay 0.1.0 until an explicit release; installer pins in NEXUS still target v0.1.0.
+  Package and plugin versions are 0.2.0; the NEXUS 0.9.8 installer/container pins target v0.2.0.
 - **CI follow-up fixes (2026-10-07):** daemon socket errors are handled across connect, authentication and
   requests instead of causing an unhandled EPIPE. Mutating requests are not replayed; job waits keep their
   existing reconnect path. Deadline tests distinguish a fresh running snapshot from unknown state when a probe
@@ -86,7 +86,7 @@ above; do not copy content from those two files into the repo.
   this checkout). Status and file map in [docs/NEXUS.md](docs/NEXUS.md).
 - **Not on the npm registry yet.** Install with `npm i -g github:xpert2404/server-use`. If npm resolves the
   `github:` shorthand over SSH and fails with `Permission denied (publickey)`, use the https tarball
-  `npm i -g https://github.com/xpert2404/server-use/archive/refs/tags/v0.1.0.tar.gz`.
+  `npm i -g https://github.com/xpert2404/server-use/archive/refs/tags/v0.2.0.tar.gz`.
 
 ## Things only the owner can do (do not attempt, ask)
 
