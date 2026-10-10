@@ -51,6 +51,8 @@ above; do not copy content from those two files into the repo.
 
 ## Status
 
+- **NEXUS 0.9.8 delivered (2026-10-10):** desktop installation/payload parity and packaged/installed-host smoke passed; public installer hash verified and both web instances run Harness 0.9.8/server-use 0.2.0. Root Bypass and existing-key login verified. Native plugin/composition/Chat contracts: 41/41. Broad additional Linux QA was not run by deployment policy. See docs/NEXUS.md; private delivery receipts stay downstream.
+
 - **0.2.0 released (2026-10-10):** local key metadata/import and native inventory administration, encrypted-key onboarding and expanded MCP operations implemented. NEXUS adapter auto-confirms in root Bypass and supports masked local secret input. Real-sshd suite: 61/61; focused key/MCP/privacy suite: 10/10. Full unit suite: 189 tests, 186 passed, three skips, zero failures. All seven CI jobs passed for 53719c7 (run 38082281723); tag v0.2.0 and GitHub release published. Tag installation, global upgrade and cached Claude plugin launcher report 0.2.0. Native NEXUS delivery remains tracked downstream.
 
 - **General product/privacy alignment (2026-10-09):** public README/manifests and onboarding skills emphasize
@@ -58,7 +60,7 @@ above; do not copy content from those two files into the repo.
   the default. Public MCP rejects credential payloads before daemon access; privileged local adapter APIs stay
   compatible. Arbitrary command/output secrecy is not claimed. Validation also fixed an exit-observation race
   in timed jobs; full unit/integration and real-sshd suites pass (counts in ACCEPTANCE). Versions remain unchanged
-  pending release.
+  pending release at that historical checkpoint; 0.2.0 was subsequently released as recorded above.
 - **0.1.0 released** on 2026-10-03: tag `v0.1.0`, GitHub release, CI green on Ubuntu/Windows/macOS x Node 22/24 and
   the Debian-sshd e2e job. Claude Code plugin install and Codex (0.160) plugin + MCP verified, see
   [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).

@@ -5,6 +5,19 @@ full user. This file is the map for anyone (human or agent) who continues that i
 NEXUS repositories, not here; the German counterpart for people working in that repo is `docs/SERVER-USE.md` in
 `nexus-harness`.
 
+## Delivered integration (2026-10-10)
+
+NEXUS 0.9.8 ships server-use 0.2.0 in its installer/container pins and vendored skills.
+The desktop is installed and its packaged/installed-host smoke checks pass; the public installer download
+matches the release hash, and both deployed web instances report Harness 0.9.8/server-use 0.2.0.
+Native adapter and composition coverage: 40/40, plus one Chat tool-mount contract case (41/41 together).
+Root Bypass automatically retries daemon CONFIRM responses without approval prompts. A delegated child's
+internal approval=never does not enable Bypass for an asking root. Existing key discovery/config import and
+explicit key paths are native operations; encrypted keys use masked local passphrase entry. Real existing-key
+root login and a harmless remote Bypass operation were verified. SSH user privileges, host-key pins and explicit
+readonly policies still apply. Broad additional Linux product QA was not run by the normal deployment policy;
+deployment health/version proofs do not claim it.
+
 ## Where things live
 
 | Repo | Path (relative to the NEXUS workspace) | Branch |
