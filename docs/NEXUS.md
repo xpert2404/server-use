@@ -5,12 +5,21 @@ full user. This file is the map for anyone (human or agent) who continues that i
 NEXUS repositories, not here; the German counterpart for people working in that repo is `docs/SERVER-USE.md` in
 `nexus-harness`.
 
-## Delivered integration (2026-10-10)
+## Delivered integration (2026-10-11)
 
-NEXUS 0.9.8 ships server-use 0.2.0 in its installer/container pins and vendored skills.
-The desktop is installed and its packaged/installed-host smoke checks pass; the public installer download
-matches the release hash, and both deployed web instances report Harness 0.9.8/server-use 0.2.0.
-Native adapter and composition coverage: 40/40, plus one Chat tool-mount contract case (41/41 together).
+NEXUS 0.9.9 bundles lockfile-pinned server-use 0.2.0 with its desktop adapter; container/global CLI pins and
+vendored skills also target 0.2.0. A secondary desktop account isolates HOME and AppData, which previously
+made global npm lookup miss the package. Bundled runtime resolution fixes this without sharing account data.
+Secondary-account state uses a custom home, activating the existing keychain alias namespacing; explicit
+SERVER_USE_HOME and the primary account's default stay unchanged.
+
+The desktop is installed with exact built/installed payload parity. Actual built and installed Electron smoke
+checks isolate all account environment variables, assert native tools in Chat/Coding/Server model requests,
+and execute key metadata discovery using a generated fixture key. This does not claim an external SSH login
+from that secondary account. The public installer download matches the release hash, and both deployed web
+instances report Harness 0.9.9/server-use 0.2.0. Focused adapter/resolver/composition coverage: 41/41;
+the separate native Chat contract passes one test containing four inner cases.
+
 Root Bypass automatically retries daemon CONFIRM responses without approval prompts. A delegated child's
 internal approval=never does not enable Bypass for an asking root. Existing key discovery/config import and
 explicit key paths are native operations; encrypted keys use masked local passphrase entry. Real existing-key
@@ -45,8 +54,9 @@ A plain-JS dsh plugin that registers `server_list`, `server_exec`, `server_trans
 `server_job`, `server_deploy`, `server_add` and `server_connect`. With a 0.2 source installed, it also exposes
 `server_check`, `server_watch`, `server_doctor`, `server_runbook`, `server_run` and `server_permissions`:
 
-- It loads `src/mcp.mjs` (`TOOLS`, `callTool`) and `src/client.mjs` (`DaemonClient`) from the global npm install
-  (`SERVER_USE_DIR`, the plugin config `serverUseDir`, or `npm root -g`), so **those two exports are an API: keep
+- It loads `src/mcp.mjs` (`TOOLS`, `callTool`) and `src/client.mjs` (`DaemonClient`) from explicit plugin config
+  `serverUseDir`, then `SERVER_USE_DIR`, then the bundled desktop runtime, finally global `npm root -g`.
+  **Those two exports are an API: keep
   them stable** (they are listed in the CHANGELOG when they change). The `yes` parameter is removed from the
   schema the model sees.
 - Approvals: a call runs without `yes`; hosts answering `CONFIRM` open a real approval dialog
@@ -81,8 +91,9 @@ through the web instance. It uses the same vendored skills; its persona maps the
   mirrors that for hosts without the policy service.
 - **Staging in the desktop EXE:** `upstream/apps/desktop/scripts/package-target.ts` copies
   `packages/nexus-server-use` into the bundle and `src/nexus-setup.ts` stages it into `$DSH_HOME/nexus/packages/`
-  (required, like `nexus-coding`, because the Coding and Server presets load it by relative path). The EXE does not
-  ship the server-use CLI itself: without a global install the plugin logs a warning and registers no tools.
+  (required, like `nexus-coding`, because the Coding and Server presets load it by relative path). Since 0.9.9,
+  the plugin includes its locked server-use runtime, installed before desktop packaging; native tools work
+  without a global CLI package. Account onboarding, inventories and keys remain local to that account.
 - **Rubric id `server`** appears in: `nexus-ui` rubric metadata/i18n/icon, `install-local.ps1`,
   `docker/entrypoint.sh`, `upstream/apps/desktop/src/nexus-setup.ts` (workspace folders) and the smoke scripts.
 
