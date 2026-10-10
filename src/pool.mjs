@@ -1,15 +1,14 @@
 // @ts-check
 // One SSH connection per server, kept open and shared by every caller of the daemon.
 // Commands open a channel on it instead of paying a new handshake each time.
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import ssh2 from 'ssh2'
 import * as inventory from './inventory.mjs'
 import * as hostkeys from './hostkeys.mjs'
 import { getSecret } from './secrets.mjs'
 import { file, sshDir } from './paths.mjs'
-import { SuError, keyType, fingerprint } from './util.mjs'
+import { SuError, keyType, fingerprint, expandPath, readSmall, realPath, keyFailure, KEY_MAX } from './util.mjs'
 
 const { Client, utils } = ssh2
 
@@ -148,19 +147,19 @@ function release(/** @type {Conn} */ c) {
 /**
  * Open and authenticate one SSH connection.
  * @param {inventory.Server & {name: string}} server
- * @param {{password?: string, keyOnly?: boolean}} [opts] password overrides the stored one (used by `add`);
- *   keyOnly proves key login works without any password (used before locking password login).
+ * @param {{password?: string, passphrase?: string, keyOnly?: boolean}} [opts] password and passphrase override the
+ *   stored ones (used by `add`); keyOnly proves key login works without any password (used before locking password login).
  * @returns {Promise<import('ssh2').Client & {hostkey: any, authMethod?: string, proven: string[]}>} proven fills in
  *   after login with the fingerprints of all host keys an OpenSSH server proves it holds on this very connection
  *   (signed with this session's id, so a forwarder can't fake them; other servers announce none).
  */
 export function connect(server, opts = {}) {
   const port = server.port || 22
-  const attempts = authAttempts(server, opts)
   const types = hostkeys.knownTypes(server.host, port)
   const pinned = algsFor(types)
   const serverHostKey = pinned.length ? [...pinned, ...HOSTKEY_ALGS.filter((a) => a !== 'ssh-dss' && !pinned.includes(a))] : []
   return new Promise((resolve, reject) => {
+    const { attempts, skipped } = authAttempts(server, opts)
     const client = new Client()
     /** @type {any} */ let host
     /** @type {string[]} */ const tried = []
@@ -170,7 +169,7 @@ export function connect(server, opts = {}) {
       client.setNoDelay(true)
       resolve(Object.assign(client, { hostkey: host, authMethod: tried.at(-1), proven }))
     })
-    client.on('error', (err) => reject(classify(err, server, host, tried)))
+    client.on('error', (err) => reject(classify(err, server, host, tried, skipped)))
     client.connect({
       host: server.host,
       port,
@@ -198,27 +197,44 @@ export function connect(server, opts = {}) {
   })
 }
 
-/** Ordered auth attempts. Password servers try the password first so we don't burn MaxAuthTries on keys. */
-function authAttempts(/** @type {inventory.Server & {name: string}} */ server, /** @type {{password?: string, keyOnly?: boolean}} */ opts) {
+/**
+ * Ordered auth attempts: the explicit key, server-use's own key, the ssh-agent, then the default ~/.ssh keys (the agent
+ * goes first so the files do not burn MaxAuthTries when it holds the right key), then the password. Password servers
+ * try the password first. `skipped` lists the keys that exist but cannot be used (an explicit key also when missing),
+ * so a failed login can say why instead of just "tried".
+ * @param {inventory.Server & {name: string}} server
+ * @param {{password?: string, passphrase?: string, keyOnly?: boolean}} opts
+ */
+export function authAttempts(server, opts) {
   const username = server.user
-  const passphrase = getSecret(server.name, 'passphrase')
+  const passphrase = opts.passphrase ?? getSecret(server.name, 'passphrase')
   /** @type {{type: string, label: string, method: object}[]} */
   const keys = []
+  /** @type {{path: string, reason: string, explicit: boolean}[]} */
+  const skipped = []
   const seen = new Set()
   const addKey = (/** @type {string} */ path, /** @type {boolean} */ explicit) => {
-    if (!path || seen.has(path) || !existsSync(path)) return
-    seen.add(path)
-    const text = readFileSync(path)
-    const parsed = utils.parseKey(text, passphrase)
-    if (!explicit && (parsed instanceof Error || !parsed)) return // encrypted without stored passphrase, or unsupported
-    keys.push({ type: 'publickey', label: path, method: { type: 'publickey', username, key: text, passphrase } })
+    const r = readSmall(path, KEY_MAX)
+    if (!r.buf) {
+      if (explicit) skipped.push({ path, reason: String(r.reason), explicit })
+      return
+    }
+    const real = realPath(path)
+    if (seen.has(real)) return
+    seen.add(real)
+    const parsed = utils.parseKey(r.buf, passphrase)
+    const key = Array.isArray(parsed) ? parsed[0] : parsed
+    const why = key instanceof Error ? keyFailure(key) : !key ? 'unreadable' : key.isPrivateKey() ? '' : 'not a private key'
+    if (why) skipped.push({ path, reason: why, explicit })
+    // the parsed key goes to ssh2 as is: an encrypted key is not decrypted (bcrypt) a second time
+    else keys.push({ type: 'publickey', label: path, method: { type: 'publickey', username, key } })
   }
-  if (server.key) addKey(server.key.replace(/^~(?=$|[\\/])/, homedir()), true)
+  if (server.key) addKey(expandPath(server.key), true)
   addKey(file('id_ed25519'), false)
   const agent = agentPath()
-  const agentAttempt = agent ? [{ type: 'agent', label: 'ssh-agent', method: { type: 'agent', username, agent } }] : []
+  if (agent) keys.push({ type: 'agent', label: 'ssh-agent', method: { type: 'agent', username, agent } })
   for (const n of ['id_ed25519', 'id_ecdsa', 'id_rsa']) addKey(join(sshDir(), n), false)
-  if (opts.keyOnly) return [...keys, ...agentAttempt]
+  if (opts.keyOnly) return { attempts: keys, skipped }
   const password = opts.password ?? getSecret(server.name, 'password')
   const pw = password === undefined ? [] : [
     { type: 'password', label: 'password', method: { type: 'password', username, password } },
@@ -229,16 +245,17 @@ function authAttempts(/** @type {inventory.Server & {name: string}} */ server, /
       },
     },
   ]
-  return server.auth === 'password' ? [...pw, ...keys, ...agentAttempt] : [...keys, ...agentAttempt, ...pw]
+  return { attempts: server.auth === 'password' ? [...pw, ...keys] : [...keys, ...pw], skipped }
 }
 
-function agentPath() {
+/** The ssh-agent to ask: SSH_AUTH_SOCK, else the Windows OpenSSH agent pipe; undefined when there is none. */
+export function agentPath() {
   if ('SSH_AUTH_SOCK' in process.env) return process.env.SSH_AUTH_SOCK || undefined // explicit "" disables the agent
-  if (process.platform === 'win32' && existsSync('\\\\.\\pipe\\openssh-ssh-agent')) return '\\\\.\\pipe\\openssh-ssh-agent'
+  if (process.platform === 'win32' && existsSync(String.raw`\\.\pipe\openssh-ssh-agent`)) return String.raw`\\.\pipe\openssh-ssh-agent`
   return undefined
 }
 
-function classify(/** @type {any} */ err, /** @type {inventory.Server & {name: string}} */ server, /** @type {any} */ host, /** @type {string[]} */ tried) {
+function classify(/** @type {any} */ err, /** @type {inventory.Server & {name: string}} */ server, /** @type {any} */ host, /** @type {string[]} */ tried, /** @type {{path: string, reason: string, explicit: boolean}[]} */ skipped) {
   const where = `${server.name} (${server.user}@${server.host}:${server.port || 22})`
   if (host && !host.ok) {
     // trust --reset forgets the inventory address of the name, so it only helps when that is the address that failed
@@ -252,7 +269,20 @@ function classify(/** @type {any} */ err, /** @type {inventory.Server & {name: s
       { expected: host.expected, got: host.fingerprint })
   }
   if (err.level === 'client-authentication') {
-    return new SuError('AUTH', `authentication failed for ${where} (tried: ${tried.join(', ') || 'nothing — no key, agent or password available'})`)
+    // An encrypted key we could not open is the likely reason, unless a password was tried too (then it is merely one
+    // of several unused default keys): say so, so the caller can ask for the passphrase instead of giving up.
+    const need = skipped.find((s) => s.explicit && ['encrypted', 'bad passphrase'].includes(s.reason))
+      ?? (tried.includes('password') ? undefined : skipped.find((s) => s.reason === 'encrypted'))
+    if (need) {
+      const port = server.port || 22
+      const fix = inventory.load()[server.name] ? `server-use set ${server.name} passphrase --stdin`
+        : `server-use add ${server.name} ${server.user}@${server.host}${port === 22 ? '' : ':' + port}${need.explicit ? ` --key ${need.path}` : ''} --ask-passphrase`
+      return new SuError('PASSPHRASE_REQUIRED',
+        `authentication failed for ${where}: key ${need.path} ${need.reason === 'encrypted' ? 'is passphrase-protected' : 'is protected by another passphrase than the one given'}: ssh-add it, or store the passphrase (${fix})`,
+        { key: need.path })
+    }
+    const why = skipped.length ? `; skipped: ${skipped.map((s) => `${s.path} (${s.reason})`).join(', ')}` : ''
+    return new SuError('AUTH', `authentication failed for ${where} (tried: ${tried.join(', ') || 'nothing — no key, agent or password available'}${why})`)
   }
   if (err.level === 'client-timeout' || /timed out/i.test(err.message)) return new SuError('UNREACHABLE', `${where}: connection timed out`)
   if (['ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET'].includes(err.code)) {

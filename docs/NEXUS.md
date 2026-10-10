@@ -37,8 +37,7 @@ A plain-JS dsh plugin that registers `server_list`, `server_exec`, `server_trans
   them stable** (they are listed in the CHANGELOG when they change). The `yes` parameter is removed from the
   schema the model sees.
 - Approvals: a call runs without `yes`; hosts answering `CONFIRM` open a real approval dialog
-  (`ctx.approval.request`), and only after "allow once" the call repeats for those hosts with `yes`. With the
-  approval policy `never` (danger-full-access) the call is refused with a hint to switch to a mode that asks.
+  (`ctx.approval.request`), and only after "allow once" the call repeats for those hosts with `yes`. When the root conversation explicitly uses Bypass (`danger-full-access`), confirmations are automatically granted without a dialog. A delegated child with policy `never` does not independently gain Bypass.
 - `server_add` asks for the password with a **masked question** (`ctx.userQuestions.ask`, question id
   `secret:server-password`); the answer goes straight to the daemon op `servers.add`, never through tool
   arguments, results, the session log or the model.
@@ -104,8 +103,7 @@ The shared local checkout still has an older pointer; coordinate any update with
 from that repository. Both safety stashes are retained. This review does not claim overall NEXUS CI or deployment
 acceptance.
 
-The installer/container pins remain `v0.1.0` until an explicit 0.2 release. Vendored skills include 0.2 commands
-with availability checks and 0.1 fallbacks; the plugin registers only tools the installed MCP source exports.
+NEXUS 0.9.8 pins server-use `v0.2.0`. Its native inventory supports keys/import/add with key paths, set/rm/trust, disconnect/version/audit. Masked native prompts support encrypted-key onboarding and local secrets. The plugin registers only tools the installed MCP source exports.
 Current automated evidence (2026-10-07): plugin 19/19, real dsh composition 6/6, settings-controller 62/62,
 presets/projects 11/11, runtime packaging 9/9, approval/password UI 18/18 and connector-policy browser 5/5.
 The isolated UI build passes; Svelte check reports 0 errors and 24 warnings. Exact commands and open device

@@ -7,6 +7,14 @@ command you ran.
 Test environment of the evidence below: Windows 11 dev machine (Node 24), WSL Ubuntu 24.04 sshd fixture on port
 2222 (see [TESTING.md](TESTING.md)), GitHub Actions for the CI matrix.
 
+## 0.2.0 release preparation (2026-10-10)
+
+- `node --test test/key-import.test.mjs test/mcp-ops.test.mjs test/mcp-privacy.test.mjs`: 10 passed, zero failures/skips. Existing-key import, encrypted-key onboarding/reconnect and credential rejection are covered.
+- `SU_E2E_HOST=127.0.0.1 SU_E2E_PORT=2222 node --test --test-concurrency=1 "test/e2e/*.test.mjs"`: 61 passed, zero failures/skips (real WSL sshd).
+- `claude plugin validate .`: passed. `npm pack --dry-run --json`: includes runtime and manifests at 0.2.0.
+- `npm test`: 189 tests, 186 passed, three platform/environment skips, zero failures. A one-second MCP wait fixture was corrected to release its job explicitly after the running-state assertion; unknown-state timeout behavior remains unchanged.
+- CI and release delivery still pending at this source commit.
+
 ## Verified (v0.1.0, 2026-10-03)
 
 | Area | Claim | Evidence |

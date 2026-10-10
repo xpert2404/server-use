@@ -3,9 +3,12 @@
 All notable changes to server-use. The format follows [Keep a Changelog](https://keepachangelog.com/), versions
 follow [Semantic Versioning](https://semver.org/); before 1.0 minor versions may change behavior.
 
-## Unreleased (0.2)
+## 0.2.0 — 2026-10-10
 
 ### Added
+
+- Native inventory actions for SSH config import, local key metadata, explicit key paths, set/remove/trust, disconnect, version and audit. Encrypted keys support local passphrase onboarding.
+- Native hardening and expanded execution/deployment parameters. NEXUS adapters can supply credentials from masked local input without placing them in model arguments.
 
 - `check` with per-server thresholds, backup freshness and new/resolved attention diffs (exit 10), plus `watch`
   cron monitoring with ntfy/Telegram/signed webhook notifications, debounce, mute, HTTP probes and heartbeat.

@@ -22,6 +22,10 @@ the [README](../README.md#security-model).
    <server> --reset`, after you verified the change, clears it.
 5. **Audit log.** Every operation is appended to `~/.server-use/audit.jsonl` with the calling agent.
 
+## Native approval modes
+
+NEXUS Bypass automatically satisfies server-use CONFIRM decisions without displaying approval requests. The adapter resolves the root conversation: a delegated child pinned to approval never does not itself gain Bypass. Explicit readonly policies, host-key verification and remote SSH user privileges still apply. Bypass does not create root privileges; root login or authorized sudo determines them. Existing private keys remain local and are selected by path; keys discovery returns metadata only.
+
 ## Secrets
 
 The intended workflow does not give login credentials to an AI provider: the user onboards through existing

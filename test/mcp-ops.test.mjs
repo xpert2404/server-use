@@ -3,6 +3,24 @@ import assert from 'node:assert/strict'
 import { callTool, TOOLS } from '../src/mcp.mjs'
 import { SuError } from '../src/util.mjs'
 
+test('inventory tools forward key paths and import previews without exposing credentials', async () => {
+  const calls = []
+  const c = { async request(op, args) {
+    calls.push({ op, args })
+    if (op === 'servers.import') return { path: 'config', servers: [] }
+    return { name: 'lab' }
+  } }
+  await callTool(c, 'servers', { action: 'add', name: 'lab', address: 'root@localhost', key: '~/custom-key' })
+  assert.equal(calls[0].args.key, '~/custom-key')
+  await callTool(c, 'servers', { action: 'import', dryRun: true })
+  assert.equal(calls[1].op, 'servers.import')
+  assert.equal(calls[1].args.dryRun, true)
+  const blocked = { request() { assert.fail('invalid input reached daemon') } }
+  await assert.rejects(callTool(blocked, 'servers', { action: 'set', name: 'lab', fields: { passphrase: 'secret' } }), /credentials/)
+  await assert.rejects(callTool(blocked, 'servers', { action: 'add', key: '-----BEGIN OPENSSH PRIVATE KEY-----' }), /never key contents/)
+  await assert.rejects(callTool(blocked, 'servers', { action: 'import', force: true }), e => e.code === 'CONFIRM')
+})
+
 test('new remote MCP operations refuse absent targets before daemon access', async () => {
   const c = { request() { assert.fail('unexpected daemon access') } }
   for (const name of ['check', 'doctor', 'watch']) await assert.rejects(callTool(c, name, {}), /requires target/)

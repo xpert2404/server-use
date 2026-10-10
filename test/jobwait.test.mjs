@@ -2,7 +2,7 @@
 // real thing: CLI + daemon + remote/job.sh against an in-process fixture server.
 import { describe, test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -467,15 +467,18 @@ describe('job wait against a fixture server (CLI, daemon and remote/job.sh)', { 
 
   test('MCP: wait answers "still running" without an error, then the exit code', { timeout: 120_000 }, async () => {
     const n = jn('mcp')
-    await start(n, 'sleep 4; echo mcp-done; exit 2')
+    // Keep the job running until the first answer, regardless of MCP startup or probe latency.
+    const release = `mcp-release-${n}`
+    await start(n, `while [ ! -f "$HOME/${release}" ]; do sleep 0.1; done; echo mcp-done; exit 2`)
     const call = (/** @type {number} */ id, /** @type {any} */ args) => JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'job', arguments: { action: 'wait', target: 'web1', name: n, ...args } } }) + '\n'
     const run = async (/** @type {any} */ args) => {
       const r = await su(['mcp'], { input: call(1, args) })
       return JSON.parse(r.out.trim().split('\n')[0]).result
     }
-    const first = await run({ timeout: '1s' })
+    const first = await run({ timeout: '10s' })
     assert.equal(first.isError, false, first.content[0].text)
     assert.match(first.content[0].text, /still running/)
+    writeFileSync(join(fx.home, release), '')
     const second = await run({ timeout: '30s' })
     assert.equal(second.isError, true)
     assert.match(second.content[0].text, /exited 2 after/)

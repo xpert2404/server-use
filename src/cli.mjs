@@ -6,30 +6,39 @@ import { resolve, join, dirname, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { call, DaemonClient, startDaemon } from './client.mjs'
 import { VERSION, ROOT, home } from './paths.mjs'
-import { EXIT, UsageError, parseDuration } from './util.mjs'
-import { formatResults, formatStatus, worst, table } from './format.mjs'
+import { EXIT, UsageError, parseDuration, expandPath } from './util.mjs'
+import { formatAudit, formatImport, formatKeys, formatResults, formatStatus, worst, table } from './format.mjs'
 import { formatCheck } from './checkfmt.mjs'
 import { bareWait, jobTimes, waitCall } from './jobcli.mjs'
+import { TOOLS } from './mcp.mjs'
 
 const HELP = {
   _: `server-use ${VERSION} — let your agent use your servers (persistent SSH, fleet exec, cron, jobs, deploy)
 
 Targets: name | a,b | tag:<tag> | all
-Servers:  add, import, ls, show, set, rm, trust, facts, notes, disconnect
+Servers:  add, import, keys, ls, show, set, rm, trust, facts, notes, disconnect
 Run:      exec, status, check, doctor, logs, put, get, job, run
 Operate:  cron, env, deploy, harden, watch
 Other:    runbook, permissions, audit, daemon, skills, mcp, help <verb>, --version
 Global:   --json (machine-readable), exit codes: 0 ok · 2 usage/unknown server · 3 needs --yes (ask the user)
           4 host key changed · 5 unreachable · 6 auth failed · 7 readonly · 8 sudo password missing · 124 timeout
           10 check: something needs a look (not an error)`,
-  add: `server-use add <name> <user@host[:port]> [--password-stdin | --ask] [--key <path>] [--tag t]... [--policy open|confirm|readonly]
+  add: `server-use add <name> <user@host[:port]> [--password-stdin | --ask] [--key <path>] [--passphrase-stdin | --ask-passphrase] [--tag t]... [--policy open|confirm|readonly]
   Pins the host key, logs in, collects facts. With a password it installs this machine's key, proves key login
   and then deletes the password (kept as sudo password for non-root users whose sudo needs one).
+  --key uses an existing private key file (the path only; ~ is expanded). An encrypted key needs its passphrase:
+  --ask-passphrase (hidden prompt in your own terminal) or --passphrase-stdin (trusted local source), stored in the
+  keychain after a successful login; or load the key into ssh-agent. See your keys with: server-use keys
   --keep-password  keep the login password   --no-install-key  don't install a key   --note "<text>"   --force  replace
   Example (in your own terminal): server-use add trading-1 root@203.0.113.10 --ask --tag trading
-  For automation, --password-stdin reads from a trusted local secret source; never paste passwords into agent chat.`,
+  For automation, --password-stdin and --passphrase-stdin read from a trusted local secret source (only one of them
+  can use stdin); never paste passwords or passphrases into agent chat.`,
   import: `server-use import [ssh-config] [--path ~/.ssh/config] [--dry-run] [--user root] [--force]
-  Imports Host entries from your OpenSSH config (wildcards skipped).`,
+  Imports Host entries from your OpenSSH config (wildcards skipped, existing names skipped unless --force). Shows each
+  entry's key file and whether it is encrypted; entries without User get --user (default root). Try --dry-run first.`,
+  keys: `server-use keys [--json]
+  SSH private keys on this machine (your ~/.ssh, server-use's own key, keys named by the inventory): path, type,
+  encrypted?, fingerprint, which servers use them, plus the ssh-agent identities. Never prints key contents.`,
   ls: 'server-use ls — inventory with connection state',
   show: 'server-use show <name> — details, stored secret kinds (never values), connection, notes',
   set: `server-use set <name> key=value ...        keys: host port user key auth policy tags note check
@@ -103,7 +112,7 @@ server-use runbook ls | runbook show|rm <name>
   audit: 'server-use audit [-n 20] — what server-use did (agent, host, command, exit)',
   daemon: 'server-use daemon status|start|stop|restart — the background process holding the connections',
   skills: 'server-use skills install [--dir ~/.agents/skills] — copy the agent skills for agents without the plugin',
-  mcp: 'server-use mcp — MCP server on stdio (tools: servers, exec, transfer, logs, cron, job, deploy, check, doctor, watch, runbook, run, permissions)',
+  mcp: `server-use mcp — MCP server on stdio (tools: ${TOOLS.map((t) => t.name).join(', ')})`,
 }
 
 const OUR_EXEC_FLAGS = { '--sudo': 0, '--yes': 0, '--json': 0, '--full': 0, '--raw': 0, '--timeout': 1, '--cwd': 1, '--env': 1, '--script': 1, '--help': 0 }
@@ -134,17 +143,28 @@ function parse(args, options = {}) {
 const VERBS = {
   async add(args) {
     const { v, p } = parse(args, {
-      'password-stdin': { type: 'boolean' }, ask: { type: 'boolean' }, key: { type: 'string' }, tag: { type: 'string', multiple: true },
+      'password-stdin': { type: 'boolean' }, ask: { type: 'boolean' }, key: { type: 'string' }, 'passphrase-stdin': { type: 'boolean' }, 'ask-passphrase': { type: 'boolean' },
+      tag: { type: 'string', multiple: true },
       policy: { type: 'string' }, 'keep-password': { type: 'boolean' }, 'no-install-key': { type: 'boolean' }, note: { type: 'string' }, force: { type: 'boolean' },
     })
     if (p.length !== 2) throw new UsageError(HELP.add)
-    let password
+    if (v['password-stdin'] && v['passphrase-stdin']) throw new UsageError('only one of --password-stdin and --passphrase-stdin can read stdin')
+    let password, passphrase
     if (v['password-stdin']) password = (await readStdin()).replace(/\r?\n$/, '')
     else if (v.ask) password = await askHidden(`Password for ${p[1]}: `)
-    const r = await call('servers.add', {
-      name: p[0], address: p[1], password, key: v.key ? resolve(v.key) : undefined, tags: splitTags(v.tag), policy: v.policy,
-      keepPassword: v['keep-password'], installKey: !v['no-install-key'], note: v.note, force: v.force,
-    })
+    if (v['passphrase-stdin']) passphrase = (await readStdin()).replace(/\r?\n$/, '')
+    else if (v['ask-passphrase']) passphrase = await askHidden(`Key passphrase for ${p[1]}: `)
+    /** @type {any} */ let r
+    try {
+      r = await call('servers.add', {
+        name: p[0], address: p[1], password, passphrase, key: v.key ? resolve(expandPath(v.key)) : undefined, tags: splitTags(v.tag), policy: v.policy,
+        keepPassword: v['keep-password'], installKey: !v['no-install-key'], note: v.note, force: v.force,
+      })
+    } catch (e) {
+      const err = /** @type {any} */ (e)
+      if (err.code === 'PASSPHRASE_REQUIRED') err.message += '\nrepeat with --ask-passphrase (hidden prompt in your own terminal) or --passphrase-stdin (trusted local source), or load the key into ssh-agent (ssh-add)'
+      throw err
+    }
     if (v.json) return json(r)
     print([
       `added ${r.name}: ${r.user}@${r.host}:${r.port} · auth ${r.auth} · policy ${r.policy}${r.tags?.length ? ` · tags ${r.tags.join(',')}` : ''}`,
@@ -159,16 +179,24 @@ const VERBS = {
   async import(args) {
     const { v, p } = parse(args, { path: { type: 'string' }, 'dry-run': { type: 'boolean' }, user: { type: 'string' }, force: { type: 'boolean' } })
     if (p.length && p[0] !== 'ssh-config') throw new UsageError(HELP.import)
-    const r = await call('servers.import', { path: v.path ? resolve(v.path) : undefined, dryRun: v['dry-run'], defaultUser: v.user, force: v.force })
+    const r = await call('servers.import', { path: v.path ? resolve(expandPath(v.path)) : undefined, dryRun: v['dry-run'], defaultUser: v.user, force: v.force })
     if (v.json) return json(r)
-    print([`from ${r.path}:`, ...r.servers.map((/** @type {any} */ s) => `  ${s.action.padEnd(18)} ${s.name}  ${s.user}@${s.host}:${s.port}${s.key ? `  key ${s.key}` : ''}`), r.hint].join('\n'))
+    print(formatImport(r))
+  },
+
+  async keys(args) {
+    const { v, p } = parse(args)
+    if (p.length) throw new UsageError(HELP.keys)
+    const r = await call('servers.keys')
+    if (v.json) return json(r)
+    print(formatKeys(r, 'server-use import ssh-config --dry-run, or server-use add <name> <user@host> --key <path>'))
   },
 
   async ls(args) {
     const { v } = parse(args)
     const r = await call('servers.list')
     if (v.json) return json(r)
-    if (!r.servers.length) return print('inventory is empty — add with an existing SSH key, or run server-use add <name> <user@host> --ask in your own terminal')
+    if (!r.servers.length) return print('inventory is empty — see your SSH keys with server-use keys, take your ~/.ssh/config hosts with server-use import ssh-config --dry-run, or add one: server-use add <name> <user@host> [--key <path>] (password login: add --ask in your own terminal)')
     const rows = r.servers.map((/** @type {any} */ s) => [s.name, `${s.user}@${s.host}:${s.port}`, s.policy, s.auth, s.connection, (s.tags || []).join(','), s.os || ''])
     print(table([['NAME', 'ADDRESS', 'POLICY', 'AUTH', 'CONN', 'TAGS', 'OS'], ...rows]))
   },
@@ -467,7 +495,7 @@ const VERBS = {
     const { v } = parse(args, { lines: { type: 'string', short: 'n' } })
     const r = await call('audit.tail', { n: v.lines || 20 })
     if (v.json) return json(r)
-    print(r.entries.map((/** @type {any} */ e) => `${e.ts.slice(0, 19).replace('T', ' ')} ${String(e.agent).padEnd(11)} ${String(e.op).padEnd(14)} ${e.host || ''} ${e.cmd ? JSON.stringify(e.cmd) : ''}${e.exit !== undefined ? ` exit ${e.exit}` : ''}`).join('\n') || 'nothing yet')
+    print(formatAudit(r.entries))
   },
 
   async daemon(args) {

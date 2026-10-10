@@ -1,18 +1,19 @@
 // @ts-check
 // Inventory operations: add (with key bootstrap), import from ~/.ssh/config, list, show, set, rm, trust, facts, notes.
-import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync } from 'node:fs'
+import ssh2 from 'ssh2'
 import { hostname } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { generateEd25519 } from '../keygen.mjs'
 import * as inventory from '../inventory.mjs'
 import * as hostkeys from '../hostkeys.mjs'
 import { setSecret, deleteSecret, getSecret, backend } from '../secrets.mjs'
-import { connect } from '../pool.mjs'
+import { connect, agentPath } from '../pool.mjs'
 import { file, ensureHome, sshDir } from '../paths.mjs'
 import { audit } from '../audit.mjs'
 import { rawExec, fanOut } from './exec.mjs'
 import { scriptSource, kv } from '../remote.mjs'
-import { shVars, SuError, UsageError } from '../util.mjs'
+import { shVars, SuError, UsageError, expandPath, readSmall, realPath, keyFailure, fingerprint, KEY_MAX, unsafePath } from '../util.mjs'
 
 /** @typedef {{pool: import('../pool.mjs').Pool, agent: string, signal?: AbortSignal, runId: string}} Ctx */
 
@@ -69,7 +70,7 @@ export async function add(ctx, a) {
   /** @type {inventory.Server & {name: string}} */
   const server = { name, host, port, user, auth: a.password !== undefined ? 'password' : 'key', key: a.key, tags: a.tags || [], policy: a.policy || 'confirm' }
 
-  const client = await connect(server, { password: a.password })
+  const client = await connect(server, { password: a.password, passphrase: a.passphrase })
   const hostkey = client.hostkey
   let facts = {}
   let keyInstalled = false
@@ -103,7 +104,7 @@ export async function add(ctx, a) {
       const pub = ensureKey()
       await runAdhoc(client, name, 'harden', { SU_ACTION: 'install-key', SU_PUBKEY: pub })
       try {
-        const probe = await connect(server, { keyOnly: true })
+        const probe = await connect(server, { keyOnly: true, passphrase: a.passphrase })
         probe.end()
         keyInstalled = true
         server.auth = 'key'
@@ -117,6 +118,8 @@ export async function add(ctx, a) {
       else if (user !== 'root' && /** @type {any} */ (facts).sudo === 'password') { setSecret(name, 'sudo', a.password); stored = 'sudo' }
       if (keyInstalled) hints.push('If you shared this password in chat, rotate it locally with passwd. After verifying key login, you can approve disabling password login: server-use harden ' + name + ' --lock-password --yes')
     }
+
+    if (a.passphrase !== undefined) setSecret(name, 'passphrase', a.passphrase)
 
     inventory.upsert(name, {
       host, port, user, auth: server.auth, key: a.key, tags: server.tags, policy: server.policy,
@@ -134,6 +137,57 @@ export async function add(ctx, a) {
     hostkey: { fingerprint: hostkey?.fingerprint, status: hostkey?.status },
     keyInstalled, secretStored: stored, secretBackend: backend(), facts, hints,
   }
+}
+
+/** Inspect locally; only metadata may leave this function. */
+function keyMetadata(/** @type {string} */ path) {
+  const r = readSmall(path, KEY_MAX)
+  if (!r.buf) return { path, exists: r.reason !== 'not found', usable: false, note: r.reason }
+  const parsed = ssh2.utils.parseKey(r.buf)
+  const key = Array.isArray(parsed) ? parsed[0] : parsed
+  if (key instanceof Error) {
+    const reason = keyFailure(key)
+    return { path, exists: true, encrypted: reason === 'encrypted', usable: false, note: reason,
+      private: reason === 'encrypted' || /-----BEGIN (?:OPENSSH |RSA |EC |DSA |ENCRYPTED )?PRIVATE KEY-----/.test(r.buf.toString('utf8')) }
+  }
+  return { path, exists: true, private: key.isPrivateKey(), encrypted: false, usable: key.isPrivateKey(), type: key.type,
+    fingerprint: fingerprint(key.getPublicSSH()) }
+}
+
+/** op "servers.keys": metadata only, without connecting to any server. */
+export async function keys() {
+  const inv = inventory.list()
+  const candidates = new Map()
+  const add = (/** @type {string} */ path, /** @type {string} */ source) => {
+    path = resolve(expandPath(path))
+    const real = realPath(path)
+    if (!candidates.has(real)) candidates.set(real, { path, source })
+  }
+  for (const s of inv) if (s.key) add(s.key, 'inventory')
+  add(file('id_ed25519'), 'server-use')
+  if (!unsafePath(sshDir())) {
+    try { for (const e of readdirSync(sshDir(), { withFileTypes: true })) if (e.isFile() || e.isSymbolicLink()) add(join(sshDir(), e.name), 'ssh') } catch { /* absent or inaccessible */ }
+  }
+  const found = []
+  for (const [real, c] of candidates) {
+    const { private: isPrivate, ...metadata } = keyMetadata(c.path)
+    if (!isPrivate && c.source !== 'inventory') continue
+    found.push({ ...metadata, source: c.source, usedBy: inv.filter((s) => s.key && realPath(resolve(expandPath(s.key))) === real).map((s) => s.name) })
+  }
+  const path = agentPath()
+  const agent = { configured: !!path, path, reachable: false, identities: /** @type {any[]} */ ([]) }
+  if (path) await new Promise((done) => {
+    const timer = setTimeout(() => done(undefined), 1500)
+    ssh2.createAgent(path).getIdentities((err, identities) => {
+      clearTimeout(timer)
+      if (!err) {
+        agent.reachable = true
+        agent.identities = identities.map((k) => ({ type: k.type, fingerprint: fingerprint(k.getPublicSSH()), comment: k.comment }))
+      }
+      done(undefined)
+    })
+  })
+  return { sshDir: sshDir(), keys: found, agent }
 }
 
 /** op "servers.list" */
@@ -247,16 +301,17 @@ export function parseSshConfig(/** @type {string} */ text) {
 
 /** op "servers.import": {path?, dryRun?, force?, defaultUser?} */
 export function importSshConfig(/** @type {Ctx} */ ctx, /** @type {any} */ a) {
-  const path = a.path || join(sshDir(), 'config')
+  const path = expandPath(a.path || join(sshDir(), 'config'))
   if (!existsSync(path)) throw new UsageError(`no ssh config at ${path}`)
   const found = parseSshConfig(readFileSync(path, 'utf8'))
   const inv = inventory.load()
   const out = []
   for (const h of found) {
     const exists = !!inv[h.name]
-    const entry = { ...h, user: h.user || a.defaultUser || 'root' }
+    const entry = { ...h, key: h.key ? resolve(expandPath(h.key)) : undefined, user: h.user || a.defaultUser || 'root', userDefaulted: !h.user,
+      keyStatus: h.key ? keyMetadata(resolve(expandPath(h.key))) : undefined }
     if (exists && !a.force) { out.push({ ...entry, action: 'skipped (exists)' }); continue }
-    if (!a.dryRun) inventory.upsert(h.name, { host: entry.host, port: entry.port, user: entry.user, key: entry.key, auth: 'key', policy: 'confirm', tags: ['imported'], added: new Date().toISOString().slice(0, 10) })
+    if (!a.dryRun) inventory.upsert(h.name, { host: entry.host, port: entry.port, user: entry.user, key: entry.key, auth: 'key', policy: inv[h.name]?.policy || 'confirm', tags: inv[h.name]?.tags || ['imported'], added: inv[h.name]?.added || new Date().toISOString().slice(0, 10) })
     out.push({ ...entry, action: a.dryRun ? 'would import' : 'imported' })
   }
   if (!a.dryRun) audit({ agent: ctx.agent, op: 'import', path, count: out.filter((o) => o.action === 'imported').length })

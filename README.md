@@ -17,7 +17,7 @@ all been tested. NEXUS Harness is [one optional integration](docs/NEXUS.md).
 No remote agent or package is required: servers need `sshd` and a POSIX shell. Features such as jobs, cron,
 monitoring and deploys create their own managed files, listed [below](#what-runs-on-the-server).
 
-**Latest release: 0.1.0, alpha.** `main` also contains the implemented, unreleased 0.2 features. Client: Windows,
+**Version: 0.2.0, alpha.** Client: Windows,
 macOS or Linux with Node.js 22+. Real-sshd acceptance covers Debian/Ubuntu; other Linux distributions are
 compatibility targets, not claimed acceptance results. Not on the npm registry yet:
 `npm i -g github:xpert2404/server-use` installs the current GitHub source. See [acceptance evidence](docs/ACCEPTANCE.md).
@@ -36,6 +36,8 @@ server-use add web1 deploy@203.0.113.10 --ask --tag prod
 `--ask` reads the password without echoing it. server-use installs this machine's SSH key and verifies a fresh
 key login. Compare the printed host-key fingerprint with your server provider's console. If SSH key access
 already works, omit `--ask`, or use `--key /path/to/key`; never paste the private key contents into chat.
+
+Discover existing keys with `server-use keys` or import your hosts with `server-use import ssh-config --dry-run`, then `server-use import ssh-config`. Encrypted keys accept `--ask-passphrase` or `--passphrase-stdin` during local onboarding. Native tools expose metadata and paths without returning private keys.
 
 Then install the integration for your agent below. The agent uses the stored local access; it does not need
 the login password. Passwords are kept locally only when needed for sudo, failed key setup or explicit retention.
@@ -95,8 +97,8 @@ codex mcp add server-use -- server-use mcp
 
 This needs `server-use` on your PATH (`npm i -g github:xpert2404/server-use`). For other MCP clients, configure a
 **local stdio server** with command `server-use` and arguments `["mcp"]`; there is no HTTP/SSE endpoint.
-The current source exposes thirteen tools: `servers`, `exec`, `transfer`, `logs`, `cron`, `job`, `deploy`,
-`check`, `doctor`, `watch`, `runbook`, `run` and `permissions`. The v0.1.0 tag has the first seven.
+The current source exposes fourteen tools: `servers`, `exec`, `transfer`, `logs`, `cron`, `job`, `deploy`,
+`harden`, `check`, `doctor`, `watch`, `runbook`, `run` and `permissions`. The v0.1.0 tag has the first seven.
 
 Public MCP inputs exclude login passwords and `.env` values. Password onboarding uses the local terminal;
 secret values use CLI stdin from a trusted local source. MCP `servers(add)` uses existing local SSH keys or
@@ -317,7 +319,7 @@ What server-use leaves behind is visible and removable:
 
 - `npm i -g github:xpert2404/server-use` fails with `Permission denied (publickey)`: npm resolved the shorthand over
   SSH. Install the tarball instead:
-  `npm i -g https://github.com/xpert2404/server-use/archive/refs/tags/v0.1.0.tar.gz`.
+  `npm i -g https://github.com/xpert2404/server-use/archive/refs/tags/v0.2.0.tar.gz`.
 - "could not get a matching daemon ... pid N": a daemon of an older version or protocol is still running. Stop it
   with `kill N` (Windows: `taskkill /PID N /F`) and retry.
 

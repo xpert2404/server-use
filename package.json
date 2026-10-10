@@ -1,6 +1,6 @@
 {
   "name": "server-use",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Orchestrate your servers with AI while keeping SSH credentials local. Open-source CLI, skills and MCP for Claude Code, Codex and other agents.",
   "type": "module",
   "bin": {

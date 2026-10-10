@@ -1,5 +1,49 @@
 // @ts-check
 import { createHash } from 'node:crypto'
+import { homedir } from 'node:os'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
+
+/** "~", "%d" (OpenSSH's local home) and "${HOME}" in a path. */
+export function expandPath(/** @type {string} */ p) {
+  const h = homedir()
+  return String(p).replace(/^~(?=$|[\\/])/, () => h).replaceAll('%d', () => h).replaceAll('${HOME}', () => h)
+}
+
+/** UNC and device paths (\\host\share, \\.\pipe\x): opening one on Windows makes the OS authenticate to the host it names. */
+export const unsafePath = (/** @type {string} */ p) => process.platform === 'win32' && /^[\\/]{2}/.test(p)
+
+/** Largest private key file we look at; real keys are 0.4 to 4 KB. */
+export const KEY_MAX = 64 * 1024
+
+/**
+ * Read a small regular file. A reason instead of an exception, and no filesystem call at all for a UNC/device path;
+ * FIFOs, devices and directories are refused before opening (opening a FIFO blocks).
+ * @returns {{buf?: Buffer, reason?: string}}
+ */
+export function readSmall(/** @type {string} */ path, /** @type {number} */ max) {
+  if (unsafePath(path)) return { reason: 'UNC and device paths are not allowed' }
+  try {
+    const st = statSync(path)
+    if (!st.isFile()) return { reason: 'not a regular file' }
+    if (st.size > max) return { reason: `larger than ${max >> 10} KB` }
+    return { buf: readFileSync(path) }
+  } catch (e) {
+    const code = /** @type {any} */ (e).code
+    return { reason: code === 'ENOENT' ? 'not found' : `unreadable (${code})` }
+  }
+}
+
+/** Canonical path of an existing file (symlinks, drive-letter case), for telling two spellings of one key apart. */
+export function realPath(/** @type {string} */ p) {
+  if (unsafePath(p)) return p
+  try { return realpathSync.native(p) } catch { return p }
+}
+
+/** Why ssh2 could not use a key, in terms a person can act on. */
+export function keyFailure(/** @type {Error} */ err) {
+  const m = err.message
+  return /no passphrase given/i.test(m) ? 'encrypted' : /bad passphrase/i.test(m) ? 'bad passphrase' : /unsupported/i.test(m) ? 'unsupported format' : 'unreadable'
+}
 
 /** POSIX single-quote a string for a remote shell. */
 export const shq = (/** @type {string} */ s) => "'" + String(s).replaceAll("'", String.raw`'\''`) + "'"
@@ -58,7 +102,7 @@ export class UsageError extends SuError {
 }
 
 export const EXIT = {
-  USAGE: 2, UNKNOWN_SERVER: 2, CONFIRM: 3, HOSTKEY_CHANGED: 4, UNREACHABLE: 5, AUTH: 6,
+  USAGE: 2, UNKNOWN_SERVER: 2, CONFIRM: 3, HOSTKEY_CHANGED: 4, UNREACHABLE: 5, AUTH: 6, PASSPHRASE_REQUIRED: 6,
   READONLY: 7, SUDO: 8, TIMEOUT: 124, ABORTED: 130, INTERNAL: 1, REMOTE: 1,
 }
 

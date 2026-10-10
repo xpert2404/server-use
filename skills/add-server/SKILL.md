@@ -58,6 +58,8 @@ pasted a secret into chat, do not repeat it or pass it into more tool calls. Exp
 provider, recommend rotating it locally, and continue once local access is ready. Disabling password login
 with `server-use harden trading-1 --lock-password --yes` still requires approval and a verified key login.
 
+Existing key discovery: `server-use keys` lists paths and fingerprints without returning private key contents. Public MCP offers `servers` actions `keys`, `import` (with `dryRun`), and `add` with `key` set to a local path. Native NEXUS uses the same actions through `server_list`; do not redirect available tools to the terminal. For encrypted keys use a native masked passphrase prompt or local `--ask-passphrase` / `--passphrase-stdin`.
+
 ## 2c. Import ~/.ssh/config
 
 ```

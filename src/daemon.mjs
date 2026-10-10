@@ -30,6 +30,7 @@ const OPS = {
   'servers.set': servers.set,
   'servers.rm': servers.rm,
   'servers.import': servers.importSshConfig,
+  'servers.keys': servers.keys,
   'trust.reset': servers.trustReset,
   facts: servers.refreshFacts,
   notes: servers.notes,

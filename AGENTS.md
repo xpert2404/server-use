@@ -51,6 +51,8 @@ above; do not copy content from those two files into the repo.
 
 ## Status
 
+- **0.2.0 delivery work (2026-10-10):** local key metadata/import and native inventory administration, encrypted-key onboarding and expanded MCP operations implemented. NEXUS adapter auto-confirms in root Bypass and supports masked local secret input. Real-sshd suite: 61/61; focused key/MCP/privacy suite: 10/10. Full unit suite: 189 tests, 186 passed, three skips, zero failures. CI and publication pending at this source commit.
+
 - **General product/privacy alignment (2026-10-09):** public README/manifests and onboarding skills emphasize
   the standalone MIT CLI, skills and stdio MCP for different agents. Local SSH keys or human terminal input are
   the default. Public MCP rejects credential payloads before daemon access; privileged local adapter APIs stay
